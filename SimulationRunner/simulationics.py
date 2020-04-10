@@ -13,9 +13,9 @@ import classylss
 import classylss.binding as CLASS
 from . import utils
 from . import clusters
-from . import read_uvb_tab
 from . import cambpower
 
+# DM-only
 class SimulationICs(object):
     """
     Class for creating the initial conditions for a simulation.
@@ -26,7 +26,7 @@ class SimulationICs(object):
     - Run CAMB and MP-GenIC to generate ICs
 
     The class will store the parameters of the simulation.
-    We also save a copy of the input and enough information to reproduce the resutls exactly in SimulationICs.json.
+    We also save a copy of the input and enough information to reproduce the results exactly in SimulationICs.json.
     Many things are left hard-coded.
     We assume flatness.
 
@@ -35,7 +35,6 @@ class SimulationICs(object):
     box - Box size in comoving Mpc/h
     npart - Cube root of number of particles
     redshift - redshift at which to generate ICs
-    separate_gas - if true the ICs will contain baryonic particles. If false, just DM.
     omegab - baryon density. Note that if we do not have gas particles, still set omegab, but set separate_gas = False
     omega0 - Total matter density at z=0 (includes massive neutrinos and baryons)
     hubble - Hubble parameter, h, which is H0 / (100 km/s/Mpc)
@@ -43,53 +42,74 @@ class SimulationICs(object):
     ns - Scalar spectral index
     m_nu - neutrino mass
     unitary - if true, do not scatter modes, but use a unitary gaussian amplitude.
+
+    Remove:
+    ----
+    separate_gas - if true the ICs will contain baryonic particles. If false, just DM.
     """
-    def __init__(self, *, outdir, box, npart, seed = 9281110, redshift=99, redend=0, separate_gas=True, omega0=0.288, omegab=0.0472, hubble=0.7, scalar_amp=2.427e-9, ns=0.97, rscatter=False, m_nu=0, nu_hierarchy='degenerate', uvb="pu", cluster_class=clusters.StampedeClass, nu_acc=1e-5, unitary=True):
+    def __init__(self, *, outdir, box, npart, seed = 9281110, redshift=99, redend=0, omega0=0.288, omegab=0.0472, hubble=0.7, scalar_amp=2.427e-9, ns=0.97, rscatter=False, m_nu=0, nu_hierarchy='degenerate', uvb="pu", cluster_class=clusters.StampedeClass, nu_acc=1e-5, unitary=True):
         #Check that input is reasonable and set parameters
         #In Mpc/h
-        assert box < 20000
-        self.box = box
+        assert box  < 20000
+        self.box      = box
+
         #Cube root
         assert npart > 1 and npart < 16000
-        self.npart = int(npart)
+        self.npart    = int(npart)
+
         #Physically reasonable
         assert omega0 <= 1 and omega0 > 0
-        self.omega0 = omega0
+        self.omega0   = omega0
+
         assert omegab > 0 and omegab < 1
-        self.omegab = omegab
+        self.omegab   = omegab
+
         assert redshift > 1 and redshift < 1100
         self.redshift = redshift
+
         assert redend >= 0 and redend < 1100
         self.redend = redend
+
         assert hubble < 1 and hubble > 0
         self.hubble = hubble
+
         assert scalar_amp < 1e-7 and scalar_amp > 0
         self.scalar_amp = scalar_amp
+
         assert ns > 0 and ns < 2
-        self.ns = ns
+        self.ns      = ns
         self.unitary = unitary
+
         #Neutrino accuracy for CLASS
-        self.nu_acc = nu_acc
+        self.nu_acc  = nu_acc
+
         #UVB? Only matters if gas
         self.uvb = uvb
         assert self.uvb == "hm" or self.uvb == "fg" or self.uvb == "sh" or self.uvb == "pu"
+
         self.rscatter = rscatter
+
         outdir = os.path.realpath(os.path.expanduser(outdir))
+
         #Make the output directory: will fail if parent does not exist
         if not os.path.exists(outdir):
             os.mkdir(outdir)
         else:
             if os.listdir(outdir) != []:
                 print("Warning: ",outdir," is non-empty")
+
         #Structure seed.
         self.seed = seed
+
         #Baryons?
-        self.separate_gas = separate_gas
+        self.separate_gas = False # separate_gas
+
         #If neutrinos are combined into the DM,
         #we want to use a different CAMB transfer when checking output power.
-        self.separate_nu = False
-        self.m_nu = m_nu
+        self.separate_nu  = False
+        self.m_nu         = m_nu
         self.nu_hierarchy = nu_hierarchy
+
         self.outdir = outdir
         self._set_default_paths()
         self._cluster = cluster_class(gadget=self.gadgetexe, param=self.gadgetparam, genic=self.genicexe, genicparam=self.genicout)
@@ -97,19 +117,30 @@ class SimulationICs(object):
         #at time of running.
         self.simulation_git = utils.get_git_hash(os.path.dirname(__file__))
 
+    def __repr__(self):
+        print_string = "MP-Gadget: {}\n".format(self.gadget_dir)
+        return print_string
+
+    @property
+    def cluster(self):
+        return self._cluster
+
     def _set_default_paths(self):
         """Default paths and parameter names."""
         #Default parameter file names
         self.gadgetparam = "mpgadget.param"
-        self.genicout = "_genic_params.ini"
+        self.genicout    = "_genic_params.ini"
+
         #Executable names
         self.gadgetexe = "MP-Gadget"
-        self.genicexe = "MP-GenIC"
+        self.genicexe  = "MP-GenIC"
+
         defaultpath = os.path.dirname(__file__)
+
         #Default GenIC paths
-        self.genicdefault = os.path.join(defaultpath,"mpgenic.ini")
+        self.genicdefault = os.path.join(defaultpath, "mpgenic.ini")
         self.gadgetconfig = "Options.mk"
-        self.gadget_dir = os.path.expanduser("~/codes/MP-Gadget/")
+        self.gadget_dir   = os.path.expanduser("~/codes/MP-Gadget/") # this is absolute path so make sure binary is there
 
     def cambfile(self):
         """Generate the IC power spectrum using classylss."""
@@ -209,7 +240,7 @@ class SimulationICs(object):
         config['Ngrid'] = self.npart
         config['NgridNu'] = 0
         #config['MaxMemSizePerNode'] = 0.8
-        config['ProduceGas'] = int(self.separate_gas)
+        config['ProduceGas'] = 0 # int(self.separate_gas)
         #Suppress Gaussian mode scattering
         config['UnitaryAmplitude'] = int(self.unitary)
         #The 2LPT correction is computed for one fluid. It is not clear
@@ -334,7 +365,7 @@ class SimulationICs(object):
         config['Omega0'] = self.omega0
         config['OmegaLambda'] = 1- self.omega0
         #OmegaBaryon should be zero for gadget if we don't have gas particles
-        config['OmegaBaryon'] = self.omegab*self.separate_gas
+        config['OmegaBaryon'] = self.omegab* False # self.separate_gas
         config['HubbleParam'] = self.hubble
         config['RadiationOn'] = 1
         config['HydroOn'] = 1
@@ -361,31 +392,34 @@ class SimulationICs(object):
         config['WindModel'] = 'nowind'
         config['BlackHoleOn'] = 0
         config['OutputPotential'] = 0
-        if self.separate_gas:
-            config['CoolingOn'] = 1
-            config['TreeCoolFile'] = "TREECOOL"
-            #Copy a TREECOOL file into the right place.
-            self._copy_uvb()
-            config = self._sfr_params(config)
-            config = self._feedback_params(config)
-        else:
-            config['CoolingOn'] = 0
-            config['StarformationOn'] = 0
+
+        # Removed due to no need for baryon
+        # if self.separate_gas:
+        #     config['CoolingOn'] = 1
+        #     config['TreeCoolFile'] = "TREECOOL"
+        #     #Copy a TREECOOL file into the right place.
+        #     self._copy_uvb()
+        #     config = self._sfr_params(config)
+        #     config = self._feedback_params(config)
+        # else:
+        config['CoolingOn'] = 0
+        config['StarformationOn'] = 0
+
         #Add other config parameters
         config = self._other_params(config)
         config.update(self._cluster.cluster_runtime())
         config.write()
         return
 
-    def _sfr_params(self, config):
-        """Config parameters for the default Springel & Hernquist star formation model"""
-        config['StarformationOn'] = 1
-        config['StarformationCriterion'] = 'density'
-        return config
+    # def _sfr_params(self, config):
+    #     """Config parameters for the default Springel & Hernquist star formation model"""
+    #     config['StarformationOn'] = 1
+    #     config['StarformationCriterion'] = 'density'
+    #     return config
 
-    def _feedback_params(self, config):
-        """Config parameters for the feedback models"""
-        return config
+    # def _feedback_params(self, config):
+    #     """Config parameters for the feedback models"""
+    #     return config
 
     def _other_params(self, config):
         """Function to override to set other config parameters"""
@@ -399,11 +433,6 @@ class SimulationICs(object):
         ii = np.where((times > astart)*(times < aend))
         assert np.size(times[ii]) > 0
         return times[ii]
-
-    def _copy_uvb(self):
-        """The UVB amplitude for Gadget is specified in a file named TREECOOL in the same directory as the gadget binary."""
-        fuvb = read_uvb_tab.get_uvb_filename(self.uvb)
-        shutil.copy(fuvb, os.path.join(self.outdir,"TREECOOL"))
 
     def do_gadget_build(self, gadget_config):
         """Make a gadget build and check it succeeded."""
@@ -461,11 +490,18 @@ class SimulationICs(object):
         self.gadget3params(genic_output)
         #Generate mpi_submit file
         self.generate_mpi_submit(genic_output)
+
         #Run MP-GenIC
+        #Compile from source; usually not need
         if do_build:
-            subprocess.check_call([os.path.join(os.path.join(self.gadget_dir, "genic"),self.genicexe), genic_param],cwd=self.outdir)
+            subprocess.check_call(
+                [os.path.join(os.path.join(self.gadget_dir, "genic"),self.genicexe), genic_param],
+                cwd=self.outdir)
+
             zstr = self._camb_zstr(self.redshift)
-            cambpower.check_ic_power_spectra(genic_output, camb_zstr=zstr, m_nu=self.m_nu, outdir=self.outdir, accuracy=pkaccuracy)
+            cambpower.check_ic_power_spectra(
+                genic_output, camb_zstr=zstr, m_nu=self.m_nu, outdir=self.outdir, accuracy=pkaccuracy)
+
             self.do_gadget_build(gadget_config)
         return gadget_config
 
