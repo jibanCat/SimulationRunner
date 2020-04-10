@@ -3,18 +3,28 @@ import os.path
 
 class ClusterClass:
     """Generic class implementing some general defaults for cluster submissions."""
-    def __init__(self, gadget="MP-Gadget", genic="MP-GenIC", param="mpgadget.param", genicparam="_genic_params.ini", nproc=256, timelimit=24):
+    def __init__(self, gadget="MP-Gadget", genic="MP-GenIC", param="mpgadget.param", genicparam="_genic_params.ini",
+            nproc=256, timelimit=24):
         """CPU parameters (walltime, number of cpus, etc):
         these are specified to a default here, but should be over-ridden in a machine-specific decorator."""
-        self.nproc = nproc
-        self.email = "sbird@ucr.edu"
-        self.timelimit = timelimit
+        self.nproc       = nproc
+        self.email       = "mho026@ucr.edu"
+        self.timelimit   = timelimit
+    
         #Maximum memory available for an MPI task
-        self.memory = 1800
-        self.gadgetexe = gadget
+        self.memory      = 1800
+        self.gadgetexe   = gadget
         self.gadgetparam = param
-        self.genicexe=genic
-        self.genicparam=genicparam
+        self.genicexe    = genic
+        self.genicparam  = genicparam
+
+    def __repr__(self):
+        '''
+        print out the default setting
+        '''
+        print_string  = "N Processers: {}; Email: {}\n".format(self.nproc, self.email)
+        print_string += "Timelimit: {}\n".format(self.timestring(self.timelimit))
+        return print_string
 
     def generate_mpi_submit(self, outdir):
         """Generate a sample mpi_submit file.
@@ -166,18 +176,22 @@ class BIOClass(ClusterClass):
     def _queue_directive(self, name, timelimit, nproc=256, prefix="#SBATCH"):
         """Generate mpi_submit with coma specific parts"""
         _ = timelimit
-        qstring = prefix+" --partition=short\n"
-        qstring += prefix+" --job-name="+name+"\n"
-        qstring += prefix+" --time="+self.timestring(timelimit)+"\n"
-        qstring += prefix+" --nodes="+str(int(nproc/32))+"\n"
+        qstring =  prefix + " --partition=short\n"
+        qstring += prefix + " --job-name="         + name + "\n"
+        qstring += prefix + " --time="             + self.timestring(timelimit) + "\n"
+        qstring += prefix + " --nodes="            + str(int(nproc/32))+"\n"
+        
         #Number of tasks (processes) per node
-        qstring += prefix+" --ntasks-per-node=32\n"
+        qstring += prefix + " --ntasks-per-node=32\n"
+
         #Number of cpus (threads) per task (process)
-        qstring += prefix+" --cpus-per-task=1\n"
+        qstring += prefix + " --cpus-per-task=1\n"
+
         #Max 128 GB per node (24 cores)
-        qstring += prefix+" --mem-per-cpu=4G\n"
-        qstring += prefix+" --mail-type=end\n"
-        qstring += prefix+" --mail-user="+self.email+"\n"
+        qstring += prefix + " --mem-per-cpu=4G\n"
+        qstring += prefix + " --mail-type=end\n"
+        qstring += prefix + " --mail-user="        + self.email + "\n"
+
         return qstring
 
     def _mpi_program(self, command):
@@ -189,7 +203,7 @@ class BIOClass(ClusterClass):
         #qstring += "export OMP_NUM_THREADS = $SLURM_CPUS_PER_TASK\n"
         #Adjust for thread/proc balance per socket.
         #qstring += "mpirun --map-by ppr:3:socket:PE=4 "+self.gadgetexe+" "+self.gadgetparam+"\n"
-        qstring += "mpirun --map-by core "+command+"\n"
+        qstring += "mpirun --map-by core " + command + "\n"
         return qstring
 
     def cluster_runtime(self):
@@ -208,10 +222,17 @@ class BIOClass(ClusterClass):
         name = os.path.basename(os.path.normpath(outdir))
         with open(os.path.join(outdir, "spectra_submit"),'w') as mpis:
             mpis.write("#!/bin/bash\n")
-            mpis.write("""#SBATCH --partition=short\n#SBATCH --job-name="""+pdir+"\n")
-            mpis.write("""#SBATCH --time=1:55:00\n#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=1\n#SBATCH --cpus-per-task=32\n#SBATCH --mem-per-cpu=4G\n""")
-            mpis.write( """#SBATCH --mail-type=end\n#SBATCH --mail-user=sbird@ucr.edu\nexport OMP_NUM_THREADS=32\n""")
-            mpis.write("python flux_power.py "+pdir+"/output\n")
+            mpis.write("""#SBATCH --partition=short\n""")
+            mpis.write("""#SBATCH --job-name="""   + name       + "\n")
+            mpis.write("""#SBATCH --time=1:55:00\n""")
+            mpis.write("""#SBATCH --nodes=1\n""")
+            mpis.write("""#SBATCH --ntasks-per-node=1\n""")
+            mpis.write("""#SBATCH --cpus-per-task=32\n""")
+            mpis.write("""#SBATCH --mem-per-cpu=4G\n""")
+            mpis.write("""#SBATCH --mail-type=end\n""")
+            mpis.write("""#SBATCH --mail-user="""  + self.email +  "\n")
+            mpis.write("""export OMP_NUM_THREADS=32\n""")
+            mpis.write("python flux_power.py "     + name       +  "/output\n")
 
 class StampedeClass(ClusterClass):
     """Subclassed for Stampede2's Skylake nodes.
@@ -224,14 +245,15 @@ class StampedeClass(ClusterClass):
         """Generate mpi_submit with stampede specific parts"""
         _ = timelimit
         qstring = prefix+" --partition=skx-normal\n"
-        qstring += prefix+" --job-name="+name+"\n"
-        qstring += prefix+" --time="+self.timestring(timelimit)+"\n"
+        qstring += prefix+" --job-name="  + name + "\n"
+        qstring += prefix+" --time="      + self.timestring(timelimit) + "\n"
         qstring += prefix+" --nodes=%d\n" % int(nproc)
+
         #Number of tasks (processes) per node:
         #currently optimal is 2 processes per socket.
         qstring += prefix+" --ntasks-per-node=%d\n" % int(ntasks)
         qstring += prefix+" --mail-type=end\n"
-        qstring += prefix+" --mail-user="+self.email+"\n"
+        qstring += prefix+" --mail-user=" + self.email + "\n"
         qstring += prefix+"-A TG-ASTJOBID\n"
         return qstring
 
@@ -240,7 +262,7 @@ class StampedeClass(ClusterClass):
         #Should be 96/ntasks-per-node. This uses the hyperthreading,
         #which is perhaps an extra 10% performance.
         qstring = "export OMP_NUM_THREADS=24\n"
-        qstring += "ibrun "+command+"\n"
+        qstring += "ibrun " + command + "\n"
         return qstring
 
     def generate_spectra_submit(self, outdir):
