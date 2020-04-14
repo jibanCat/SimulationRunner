@@ -113,13 +113,42 @@ class SimulationICs(object):
         self.outdir = outdir
         self._set_default_paths()
         self._cluster = cluster_class(gadget=self.gadgetexe, param=self.gadgetparam, genic=self.genicexe, genicparam=self.genicout)
+
         #For repeatability, we store git hashes of Gadget, GenIC, CAMB and ourselves
         #at time of running.
         self.simulation_git = utils.get_git_hash(os.path.dirname(__file__))
 
     def __repr__(self):
-        print_string = "MP-Gadget: {}\n".format(self.gadget_dir)
+        print_string  = "MP-Gadget path: {}\n\n".format(self.gadget_dir)
+
+        # Hyperparameter for simulations 
+        print_string += "HyperParameters: \n"
+        print_string += "----\n"
+        print_string += "box {} Mpc/h; npart {}; redshift {}-{}\n".format(
+            self.box, self.npart, self.redshift, self.redend)
+        print_string += "\n"
+
+        # Cosmology parameters
+        print_string += "Cosmology: \n"
+        print_string += """----
+Omega0 = {}; OmegaB   = {}; H    = {}; scalar amp = {};
+n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
+        \n""".format(
+            self.omega0, self.omegab, self.hubble, self.scalar_amp,
+            self.ns, self.rscatter, self.m_nu, self.nu_hierarchy)
+
+        print_string += "Cluster: \n"
+        print_string += "----\n"
+        print_string += self.cluster.__repr__() + "\n"
+
         return print_string
+    
+    @property
+    def json(self):
+        """
+        these are the variables will be saved into json
+        """
+        return self.__dict__
 
     @property
     def cluster(self):
@@ -145,14 +174,22 @@ class SimulationICs(object):
     def cambfile(self):
         """Generate the IC power spectrum using classylss."""
         #Load high precision defaults
-        pre_params = {'tol_background_integration': 1e-9, 'tol_perturb_integration' : 1.e-7, 'tol_thermo_integration':1.e-5, 'k_per_decade_for_pk': 50,'k_bao_width': 8, 'k_per_decade_for_bao':  200, 'neglect_CMB_sources_below_visibility' : 1.e-30, 'transfer_neglect_late_source': 3000., 'l_max_g' : 50, 'l_max_ur':150, 'extra metric transfer functions': 'y'}
+        pre_params = {
+            'tol_background_integration': 1e-9, 'tol_perturb_integration' : 1.e-7, 'tol_thermo_integration':1.e-5,
+            'k_per_decade_for_pk': 50,'k_bao_width': 8, 'k_per_decade_for_bao':  200,
+            'neglect_CMB_sources_below_visibility' : 1.e-30, 'transfer_neglect_late_source': 3000., 'l_max_g' : 50,
+            'l_max_ur':150, 'extra metric transfer functions': 'y'}
+
         #Set the neutrino density and subtract it from omega0
         omeganu = self.m_nu/93.14/self.hubble**2
-        omcdm = (self.omega0 - self.omegab) - omeganu
-        gparams = {'h':self.hubble, 'Omega_cdm':omcdm,'Omega_b': self.omegab, 'Omega_k':0, 'n_s': self.ns, 'A_s': self.scalar_amp}
+        omcdm   = (self.omega0 - self.omegab) - omeganu
+        gparams = {'h': self.hubble, 'Omega_cdm': omcdm,'Omega_b': self.omegab,
+            'Omega_k': 0, 'n_s': self.ns, 'A_s': self.scalar_amp}
+
         #Lambda is computed self-consistently
         gparams['Omega_fld'] = 0
         numass = get_neutrino_masses(self.m_nu, self.nu_hierarchy)
+
         #Set up massive neutrinos
         if self.m_nu > 0:
             gparams['m_ncdm'] = '%.8f,%.8f,%.8f' % (numass[2], numass[1], numass[0])
@@ -175,42 +212,52 @@ class SimulationICs(object):
             gparams['ncdm_fluid_trigger_tau_over_tau_k'] = 30000.* (self.m_nu / 0.4)
         else:
             gparams['N_ur'] = 3.046
+
         #Initial cosmology
         pre_params.update(gparams)
-        maxk = 2*math.pi/self.box*self.npart*8
-        powerparams = {'output': 'dTk vTk mPk', 'P_k_max_h/Mpc' : maxk, "z_max_pk" : self.redshift+1}
+
+        maxk        = 2 * math.pi / self.box * self.npart * 8
+        powerparams = {'output': 'dTk vTk mPk', 'P_k_max_h/Mpc' : maxk, "z_max_pk" : self.redshift + 1}
         pre_params.update(powerparams)
 
         #At which redshifts should we produce CAMB output: we want the start and end redshifts of the simulation,
         #but we also want some other values for checking purposes
-        camb_zz = np.concatenate([[self.redshift,], 1/self.generate_times()-1,[self.redend,]])
+        camb_zz = np.concatenate(
+            [ [self.redshift,], 
+             1 / self.generate_times() - 1,
+              [self.redend,] ] )
 
-        cambpars = os.path.join(self.outdir, "_class_params.ini")
+        cambpars  = os.path.join(self.outdir, "_class_params.ini")
         classconf = configobj.ConfigObj()
         classconf.filename = cambpars
         classconf.update(pre_params)
         classconf['z_pk'] = camb_zz
         classconf.write()
 
-        engine = CLASS.ClassEngine(pre_params)
+        engine  = CLASS.ClassEngine(pre_params)
         powspec = CLASS.Spectra(engine)
+
         #Save directory
         camb_output = "camb_linear/"
-        camb_outdir = os.path.join(self.outdir,camb_output)
+        camb_outdir = os.path.join(self.outdir, camb_output)
         try:
             os.mkdir(camb_outdir)
         except FileExistsError:
             pass
+
         #Save directory
         #Get and save the transfer functions
         for zz in camb_zz:
             trans = powspec.get_transfer(z=zz)
+
             #fp-roundoff
             trans['k'][-1] *= 0.9999
-            transferfile = os.path.join(camb_outdir, "ics_transfer_"+self._camb_zstr(zz)+".dat")
+            transferfile = os.path.join(camb_outdir, "ics_transfer_" + self._camb_zstr(zz) + ".dat")
             save_transfer(trans, transferfile)
+
             pk_lin = powspec.get_pklin(k=trans['k'], z=zz)
-            pkfile = os.path.join(camb_outdir, "ics_matterpow_"+self._camb_zstr(zz)+".dat")
+            pkfile = os.path.join(camb_outdir, "ics_matterpow_" + self._camb_zstr(zz) + ".dat")
+
             np.savetxt(pkfile, np.vstack([trans['k'], pk_lin]).T)
 
         return camb_output
@@ -226,38 +273,49 @@ class SimulationICs(object):
     def genicfile(self, camb_output):
         """Generate the GenIC parameter file"""
         config = configobj.ConfigObj(self.genicdefault)
-        config.filename = os.path.join(self.outdir, self.genicout)
-        config['BoxSize'] = self.box*1000
+        
+        config.filename   = os.path.join(self.outdir, self.genicout)
+        config['BoxSize'] = self.box * 1000
+
         genicout = "ICS"
+
         try:
             os.mkdir(os.path.join(self.outdir, genicout))
         except FileExistsError:
             pass
+
         config['OutputDir'] = genicout
+
         #Is this enough information, or should I add a short hash?
-        genicfile = str(self.box)+"_"+str(self.npart)+"_"+str(self.redshift)
+        genicfile = str(self.box) + "_" + str(self.npart) + "_" + str(self.redshift)
+
         config['FileBase'] = genicfile
-        config['Ngrid'] = self.npart
-        config['NgridNu'] = 0
+        config['Ngrid']    = self.npart
+        config['NgridNu']  = 0
         #config['MaxMemSizePerNode'] = 0.8
         config['ProduceGas'] = 0 # int(self.separate_gas)
+
         #Suppress Gaussian mode scattering
         config['UnitaryAmplitude'] = int(self.unitary)
+
         #The 2LPT correction is computed for one fluid. It is not clear
         #what to do with a second particle species, so turn it off.
         #Even for CDM alone there are corrections from radiation:
         #order: Omega_r / omega_m ~ 3 z/100 and it is likely
         #that the baryon 2LPT term is dominated by the CDM potential
         #(YAH, private communication)
+
         #Total matter density, not CDM matter density.
-        config['Omega0'] = self.omega0
-        config['OmegaLambda'] = 1- self.omega0
+        config['Omega0']      = self.omega0
+        config['OmegaLambda'] = 1 - self.omega0
         config['OmegaBaryon'] = self.omegab
         config['HubbleParam'] = self.hubble
-        config['Redshift'] = self.redshift
+        config['Redshift']    = self.redshift
+        
         zstr = self._camb_zstr(self.redshift)
-        config['FileWithInputSpectrum'] = camb_output + "ics_matterpow_"+zstr+".dat"
-        config['FileWithTransferFunction'] = camb_output + "ics_transfer_"+zstr+".dat"
+        config['FileWithInputSpectrum']    = camb_output + "ics_matterpow_"+ zstr + ".dat"
+        config['FileWithTransferFunction'] = camb_output + "ics_transfer_" + zstr + ".dat"
+
         numass = get_neutrino_masses(self.m_nu, self.nu_hierarchy)
         config['MNue'] = numass[2]
         config['MNum'] = numass[1]
@@ -267,16 +325,18 @@ class SimulationICs(object):
         assert config['DifferentTransferFunctions'] == '1'
         assert config['InputPowerRedshift'] == '-1'
         config['Seed'] = self.seed
+
         config = self._genicfile_child_options(config)
         config.update(self._cluster.cluster_runtime())
         config.write()
+
         return (os.path.join(genicout, genicfile), config.filename)
 
     def _alter_power(self, camb_output):
         """Function to hook if you want to change the CAMB output power spectrum.
         Should save the new power spectrum to camb_output + _matterpow_str(redshift).dat"""
-        zstr = self._camb_zstr(self.redshift)
-        camb_file = os.path.join(camb_output,"ics_matterpow_"+zstr+".dat")
+        zstr      = self._camb_zstr(self.redshift)
+        camb_file = os.path.join(camb_output, "ics_matterpow_" + zstr + ".dat")
         os.stat(camb_file)
         return
 
@@ -304,6 +364,7 @@ class SimulationICs(object):
         self._really_types = []
         cc = self._cluster
         self._cluster = 0
+
         for nn, val in self.__dict__.items():
             #Convert arrays to lists
             if isinstance(val, np.ndarray):
@@ -315,6 +376,7 @@ class SimulationICs(object):
                 self._really_types.append(nn)
         with open(os.path.join(self.outdir, "SimulationICs.json"), 'w') as jsout:
             json.dump(self.__dict__,jsout)
+
         #Turn the changed types back.
         self._fromarray()
         self._cluster = cc
@@ -347,41 +409,51 @@ class SimulationICs(object):
 
     def gadget3params(self, genicfileout):
         """MP-Gadget parameter file. This *is* a configobj.
-        Note MP-Gadget supprts default arguments, so no need for a defaults file.
+        Note MP-Gadget supports default arguments, so no need for a defaults file.
+
         Arguments:
-            genicfileout - where the ICs are saved
+        ----
+            genicfileout (str) - where the ICs are saved
         """
-        config = configobj.ConfigObj()
+        config   = configobj.ConfigObj()
         filename = os.path.join(self.outdir, self.gadgetparam)
+        
         config.filename = filename
+        
         config['InitCondFile'] = genicfileout
-        config['OutputDir'] = "output"
+        config['OutputDir']    = "output"
+
         try:
             os.mkdir(os.path.join(self.outdir, "output"))
         except FileExistsError:
             pass
-        config['TimeLimitCPU'] = int(60*60*self._cluster.timelimit-300)
-        config['TimeMax'] = 1./(1+self.redend)
-        config['Omega0'] = self.omega0
-        config['OmegaLambda'] = 1- self.omega0
+
+        config['TimeLimitCPU'] = int(60 * 60 * self._cluster.timelimit - 300)
+        config['TimeMax']      = 1. / (1 + self.redend)
+        config['Omega0']       = self.omega0
+        config['OmegaLambda']  = 1 - self.omega0
+
         #OmegaBaryon should be zero for gadget if we don't have gas particles
-        config['OmegaBaryon'] = self.omegab* False # self.separate_gas
+        config['OmegaBaryon'] = self.omegab * False # self.separate_gas; always False for dm-only
         config['HubbleParam'] = self.hubble
         config['RadiationOn'] = 1
-        config['HydroOn'] = 1
+        config['HydroOn']     = 1
+
         #Neutrinos
         if self.m_nu > 0:
             config['MassiveNuLinRespOn'] = 1
         else:
             config['MassiveNuLinRespOn'] = 0
+
         numass = get_neutrino_masses(self.m_nu, self.nu_hierarchy)
         config['MNue'] = numass[2]
         config['MNum'] = numass[1]
         config['MNut'] = numass[0]
+
         #FOF
-        config['SnapshotWithFOF'] = 1
+        config['SnapshotWithFOF']      = 1
         config['FOFHaloLinkingLength'] = 0.2
-        config['OutputList'] =  ','.join([str(t) for t in self.generate_times()])
+        config['OutputList']           =  ','.join([str(t) for t in self.generate_times()])
         #These are only used for gas, but must be set anyway
         config['MinGasTemp'] = 100
         #In equilibrium with the CMB at early times.
@@ -427,11 +499,14 @@ class SimulationICs(object):
 
     def generate_times(self):
         """List of output times for a simulation. Can be overridden."""
-        astart = 1./(1+self.redshift)
-        aend = 1./(1+self.redend)
-        times = np.array([0.02,0.1,0.2,0.25,0.3333,0.5,0.66667,0.83333])
-        ii = np.where((times > astart)*(times < aend))
+        astart = 1. / (1 + self.redshift)
+        aend   = 1. / (1 + self.redend  )
+
+        times = np.array([0.02, 0.1, 0.2, 0.25, 0.3333, 0.5, 0.66667, 0.83333])
+
+        ii = np.where((times > astart) * (times < aend))
         assert np.size(times[ii]) > 0
+
         return times[ii]
 
     def do_gadget_build(self, gadget_config):
@@ -474,20 +549,28 @@ class SimulationICs(object):
         """Wrapper function to make the simulation ICs."""
         #First generate the input files for CAMB
         camb_output = self.cambfile()
+
         #Then run CAMB
         self.camb_git = classylss.__version__
+
         #Change the power spectrum file on disc if we want to do that
         self._alter_power(os.path.join(self.outdir,camb_output))
+
         #Now generate the GenIC parameters
         (genic_output, genic_param) = self.genicfile(camb_output)
+
         #Save a json of ourselves.
+        # self.json to get the json dict variable
         self.txt_description()
+
         #Check that the ICs have the right power spectrum
         #Generate Gadget makefile
         gadget_config = self.gadget3config()
+
         #Symlink the new gadget config to the source directory
         #Generate Gadget parameter file
         self.gadget3params(genic_output)
+
         #Generate mpi_submit file
         self.generate_mpi_submit(genic_output)
 
