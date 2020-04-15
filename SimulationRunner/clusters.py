@@ -10,14 +10,15 @@ class ClusterClass:
     """
     def __init__(self, gadget="MP-Gadget", genic="MP-GenIC", 
             param="mpgadget.param", genicparam="_genic_params.ini", nproc=256, 
-            timelimit=24):
+            timelimit=24, cluster_name="Template"):
         """
         CPU parameters (walltime, number of cpus, etc):
         these are specified to a default here, but should be over-ridden in a
         machine-specific decorator."""
-        self.nproc       = nproc
-        self.email       = "mho026@ucr.edu"
-        self.timelimit   = timelimit
+        self.nproc        = nproc
+        self.email        = "mho026@ucr.edu"
+        self.timelimit    = timelimit
+        self.cluster_name = cluster_name
     
         #Maximum memory available for an MPI task
         self.memory      = 1800
@@ -73,11 +74,23 @@ class ClusterClass:
             mpis.write(self._mpi_program(command="{} {}".format(
                     self.gadgetexe, self.gadgetparam)))
 
-    def generate_mpi_submit_genic(self, outdir, extracommand=None):
+    def generate_mpi_submit_genic(
+            self, outdir, extracommand=None, return_str=False):
         """Generate a sample mpi_submit file for MP-GenIC.
         The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
         name = os.path.basename(os.path.normpath(outdir))
+
+        if return_str:
+            mpis  = "#!/bin/bash\n"
+            mpis += self._queue_directive(name, timelimit=0.5, nproc=self.nproc)
+            mpis += self._mpi_program(command=self.genicexe+" "+self.genicparam)
+
+            if extracommand is not None:
+                mpis += extracommand + "\n"
+
+            return mpis
+
         with open(os.path.join(outdir, "mpi_submit_genic"),'w') as mpis:
             mpis.write("#!/bin/bash\n")
             mpis.write(self._queue_directive(name, timelimit=0.5, nproc=self.nproc))
@@ -138,7 +151,7 @@ class HipatiaClass(ClusterClass):
     """Subclassed for specific properties of the Hipatia cluster in Barcelona.
     __init__ and _queue_directive are changed."""
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs, cluster_name="Hipatia")
         self.memory = 2500
 
     def _queue_directive(self, name, timelimit, nproc=16, prefix="#PBS"):
@@ -169,7 +182,8 @@ class MARCCClass(ClusterClass):
     def __init__(self, *args, nproc=48,timelimit=8,**kwargs):
         #Complete nodes!
         assert nproc % 24 == 0
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs)
+        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
+            cluster_name="MARCC")
         self.memory = 5000
 
     def _queue_directive(self, name, timelimit, nproc=48, prefix="#SBATCH"):
@@ -216,8 +230,9 @@ class BIOClass(ClusterClass):
         #Complete nodes!
         assert nproc % 32 == 0
 
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs)
-        
+        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
+            cluster_name="BIOCluster")
+
         self.memory = 4
 
     def _queue_directive(self, name, timelimit, nproc=256, prefix="#SBATCH"):
@@ -293,7 +308,8 @@ class StampedeClass(ClusterClass):
     memory of 192GB per node, 96 GB per socket.
     Charged in node-hours, uses SLURM and icc."""
     def __init__(self, *args, nproc=2,timelimit=3,**kwargs):
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs)
+        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
+            cluster_name="Stampede")
 
     def _queue_directive(self, name, timelimit, nproc=2, prefix="#SBATCH",ntasks=4):
         """Generate mpi_submit with stampede specific parts"""
@@ -349,6 +365,9 @@ class StampedeClass(ClusterClass):
 
 class HypatiaClass(ClusterClass):
     """Subclass for Hypatia cluster in UCL"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs, cluster_name="Hypatia")
+
     def _queue_directive(self, name, timelimit, nproc=256, prefix="#PBS"):
         """Generate Hypatia-specific mpi_submit"""
         _ = timelimit

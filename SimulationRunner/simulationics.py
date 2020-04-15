@@ -26,28 +26,41 @@ class SimulationICs(object):
     - Run CAMB and MP-GenIC to generate ICs
 
     The class will store the parameters of the simulation.
-    We also save a copy of the input and enough information to reproduce the results exactly in SimulationICs.json.
+
+    We also save a copy of the input and enough information to reproduce the
+    results exactly in SimulationICs.json.
+
     Many things are left hard-coded.
+
     We assume flatness.
 
     Init parameters:
-    outdir - Directory in which to save ICs
-    box - Box size in comoving Mpc/h
-    npart - Cube root of number of particles
-    redshift - redshift at which to generate ICs
-    omegab - baryon density. Note that if we do not have gas particles, still set omegab, but set separate_gas = False
-    omega0 - Total matter density at z=0 (includes massive neutrinos and baryons)
-    hubble - Hubble parameter, h, which is H0 / (100 km/s/Mpc)
+    ----
+    outdir     - Directory in which to save ICs
+    box        - Box size in comoving Mpc/h
+    npart      - Cube root of number of particles
+    redshift   - redshift at which to generate ICs
+    omegab     - baryon density. Note that if we do not have gas particles,
+        still set omegab, but set separate_gas = False
+    omega0     - Total matter density at z=0 (includes massive neutrinos and 
+        baryons)
+    hubble     - Hubble parameter, h, which is H0 / (100 km/s/Mpc)
     scalar_amp - A_s at k = 0.05, comparable to the Planck value.
-    ns - Scalar spectral index
-    m_nu - neutrino mass
-    unitary - if true, do not scatter modes, but use a unitary gaussian amplitude.
+    ns         - Scalar spectral index
+    m_nu       - neutrino mass
+    unitary    - if true, do not scatter modes, but use a unitary gaussian
+        amplitude.
 
     Remove:
     ----
-    separate_gas - if true the ICs will contain baryonic particles. If false, just DM.
+    separate_gas - if true the ICs will contain baryonic particles;
+        If false, just DM.
     """
-    def __init__(self, *, outdir, box, npart, seed = 9281110, redshift=99, redend=0, omega0=0.288, omegab=0.0472, hubble=0.7, scalar_amp=2.427e-9, ns=0.97, rscatter=False, m_nu=0, nu_hierarchy='degenerate', uvb="pu", cluster_class=clusters.StampedeClass, nu_acc=1e-5, unitary=True):
+    def __init__(self, *, outdir, box, npart, seed = 9281110, redshift=99,
+            redend=0, omega0=0.288, omegab=0.0472, hubble=0.7, 
+            scalar_amp=2.427e-9, ns=0.97, rscatter=False, m_nu=0,
+            nu_hierarchy='degenerate', uvb="pu", 
+            cluster_class=clusters.StampedeClass, nu_acc=1e-5, unitary=True):
         #Check that input is reasonable and set parameters
         #In Mpc/h
         assert box  < 20000
@@ -96,7 +109,7 @@ class SimulationICs(object):
             os.mkdir(outdir)
         else:
             if os.listdir(outdir) != []:
-                print("Warning: ",outdir," is non-empty")
+                print("Warning: ", outdir, " is non-empty")
 
         #Structure seed.
         self.seed = seed
@@ -112,7 +125,12 @@ class SimulationICs(object):
 
         self.outdir = outdir
         self._set_default_paths()
-        self._cluster = cluster_class(gadget=self.gadgetexe, param=self.gadgetparam, genic=self.genicexe, genicparam=self.genicout)
+
+        # initialize the cluster object: to store the submit info for specific
+        # cluster in used
+        self._cluster = cluster_class(gadget=self.gadgetexe, 
+            param=self.gadgetparam, genic=self.genicexe, 
+            genicparam=self.genicout)
 
         #For repeatability, we store git hashes of Gadget, GenIC, CAMB and ourselves
         #at time of running.
@@ -137,9 +155,15 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
             self.omega0, self.omegab, self.hubble, self.scalar_amp,
             self.ns, self.rscatter, self.m_nu, self.nu_hierarchy)
 
-        print_string += "Cluster: \n"
+        print_string += "Cluster: *{}*\n".format(self._cluster.cluster_name)
         print_string += "----\n"
         print_string += self.cluster.__repr__() + "\n"
+
+        # In case a sample submission script will be useful:
+        print_string += "Example Submission Script:\n"
+        print_string += "----\n"
+        print_string += self._cluster.generate_mpi_submit(self.outdir,
+            return_str=True)
 
         return print_string
     
@@ -155,7 +179,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         return self._cluster
 
     def _set_default_paths(self):
-        """Default paths and parameter names."""
+        """Default paths and parameter names. 
+        This is part of the __init__ construction"""
         #Default parameter file names
         self.gadgetparam = "mpgadget.param"
         self.genicout    = "_genic_params.ini"
@@ -169,15 +194,28 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         #Default GenIC paths
         self.genicdefault = os.path.join(defaultpath, "mpgenic.ini")
         self.gadgetconfig = "Options.mk"
-        self.gadget_dir   = os.path.expanduser("~/codes/MP-Gadget/") # this is absolute path so make sure binary is there
+
+        # this is absolute path so make sure binary is there
+        self.gadget_dir   = os.path.expanduser("~/codes/MP-Gadget/")
 
     def cambfile(self):
-        """Generate the IC power spectrum using classylss."""
+        """
+        Generate the IC power spectrum using classylss.
+        
+        Basically is using pre_params feed into class and compute the powerspec
+        files based on the range of redshift and redend. All files are stored in
+        the directory camb_out.
+
+        Return:
+        ----
+        camb_output (str) : power specs directory. default: "camb_linear/"
+        """
         #Load high precision defaults
         pre_params = {
-            'tol_background_integration': 1e-9, 'tol_perturb_integration' : 1.e-7, 'tol_thermo_integration':1.e-5,
-            'k_per_decade_for_pk': 50,'k_bao_width': 8, 'k_per_decade_for_bao':  200,
-            'neglect_CMB_sources_below_visibility' : 1.e-30, 'transfer_neglect_late_source': 3000., 'l_max_g' : 50,
+            'tol_background_integration': 1e-9, 'tol_perturb_integration' : 1.e-7,
+            'tol_thermo_integration':1.e-5, 'k_per_decade_for_pk': 50,'k_bao_width': 8,
+            'k_per_decade_for_bao':  200, 'neglect_CMB_sources_below_visibility' : 1.e-30,
+            'transfer_neglect_late_source': 3000., 'l_max_g' : 50,
             'l_max_ur':150, 'extra metric transfer functions': 'y'}
 
         #Set the neutrino density and subtract it from omega0
@@ -204,7 +242,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
             gparams['tol_ncdm_synchronous'] = self.nu_acc
             gparams['tol_ncdm_bg'] = 1e-10
             gparams['l_max_ncdm'] = 50
-            #This disables the fluid approximations, which make P_nu not match camb on small scales.
+            #This disables the fluid approximations, which make P_nu not match 
+            # camb on small scales.
             #We need accurate P_nu to initialise our neutrino code.
             gparams['ncdm_fluid_approximation'] = 2
             #Does nothing unless ncdm_fluid_approximation = 2
@@ -217,11 +256,13 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         pre_params.update(gparams)
 
         maxk        = 2 * math.pi / self.box * self.npart * 8
-        powerparams = {'output': 'dTk vTk mPk', 'P_k_max_h/Mpc' : maxk, "z_max_pk" : self.redshift + 1}
+        powerparams = {'output': 'dTk vTk mPk', 'P_k_max_h/Mpc' : maxk, 
+            "z_max_pk" : self.redshift + 1}
         pre_params.update(powerparams)
 
-        #At which redshifts should we produce CAMB output: we want the start and end redshifts of the simulation,
-        #but we also want some other values for checking purposes
+        #At which redshifts should we produce CAMB output: we want the start and
+        # end redshifts of the simulation, but we also want some other values
+        # for checking purposes
         camb_zz = np.concatenate(
             [ [self.redshift,], 
              1 / self.generate_times() - 1,
@@ -234,8 +275,9 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         classconf['z_pk'] = camb_zz
         classconf.write()
 
+        # feed in the parameters and generate the powerspec object
         engine  = CLASS.ClassEngine(pre_params)
-        powspec = CLASS.Spectra(engine)
+        powspec = CLASS.Spectra(engine) # powerspec is an object
 
         #Save directory
         camb_output = "camb_linear/"
@@ -252,11 +294,13 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
             #fp-roundoff
             trans['k'][-1] *= 0.9999
-            transferfile = os.path.join(camb_outdir, "ics_transfer_" + self._camb_zstr(zz) + ".dat")
+            transferfile = os.path.join(
+                camb_outdir, "ics_transfer_" + self._camb_zstr(zz) + ".dat")
             save_transfer(trans, transferfile)
 
             pk_lin = powspec.get_pklin(k=trans['k'], z=zz)
-            pkfile = os.path.join(camb_outdir, "ics_matterpow_" + self._camb_zstr(zz) + ".dat")
+            pkfile = os.path.join(
+                camb_outdir, "ics_matterpow_" + self._camb_zstr(zz) + ".dat")
 
             np.savetxt(pkfile, np.vstack([trans['k'], pk_lin]).T)
 
@@ -271,7 +315,18 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         return zstr
 
     def genicfile(self, camb_output):
-        """Generate the GenIC parameter file"""
+        """
+        Generate the GenIC parameter file
+        
+        Parameters:
+        ----
+        camb_output (str) : power specs directory. default: "camb_linear/"
+
+        Returns:
+        ----
+        os.path.join(genicout, genicfile) (str) : path to genic file
+        config.filename (str):  genicout filename
+        """
         config = configobj.ConfigObj(self.genicdefault)
         
         config.filename   = os.path.join(self.outdir, self.genicout)
@@ -333,8 +388,18 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         return (os.path.join(genicout, genicfile), config.filename)
 
     def _alter_power(self, camb_output):
-        """Function to hook if you want to change the CAMB output power spectrum.
-        Should save the new power spectrum to camb_output + _matterpow_str(redshift).dat"""
+        """
+        Function to hook if you want to change the CAMB output power spectrum.
+        Should save the new power spectrum to camb_output + _matterpow_str(redshift).dat
+        
+        Parameters:
+        ----
+        camb_output (str) : power specs directory. default: "camb_linear/"
+
+        Return:
+        ----
+        (None)
+        """
         zstr      = self._camb_zstr(self.redshift)
         camb_file = os.path.join(camb_output, "ics_matterpow_" + zstr + ".dat")
         os.stat(camb_file)
@@ -357,7 +422,10 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self._really_types = []
 
     def txt_description(self):
-        """Generate a text file describing the parameters of the code that generated this simulation, for reproducibility."""
+        """
+        Generate a text file describing the parameters of the code that generated
+        this simulation, for reproducibility.
+        """
         #But ditch the output of make
         self.make_output = ""
         self._really_arrays = []
@@ -382,7 +450,10 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self._cluster = cc
 
     def load_txt_description(self):
-        """Load the text file describing the parameters of the code that generated a simulation."""
+        """
+        Load the text file describing the parameters of the code that generated
+        a simulation.
+        """
         cc = self._cluster
         with open(os.path.join(self.outdir, "SimulationICs.json"), 'r') as jsin:
             self.__dict__ = json.load(jsin)
@@ -390,21 +461,35 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self._cluster = cc
 
     def gadget3config(self, prefix="OPT += -D"):
-        """Generate a config Options file for Yu Feng's MP-Gadget.
-        This code is configured via runtime options."""
+        """
+        Generate a config Options file for Yu Feng's MP-Gadget.
+        This code is configured via runtime options.
+        
+        Parameters:
+        ----
+        prefix (str) : default "OPT += -D"
+
+        Returns:
+        ----
+        g_config_filename (str) : path to self.gadgetconfig
+        """
         g_config_filename = os.path.join(self.outdir, self.gadgetconfig)
+
         with open(g_config_filename,'w') as config:
             config.write("MPICC = mpicc\nMPICXX = mpic++\n")
             optimize = self._cluster.cluster_optimize()
             config.write("OPTIMIZE = "+optimize+"\n")
-            config.write("GSL_INCL = $(shell gsl-config --cflags)\nGSL_LIBS = $(shell gsl-config --libs)\n")
+            config.write(str(
+                "GSL_INCL = $(shell gsl-config --cflags)\n"
+                "GSL_LIBS = $(shell gsl-config --libs)\n"))
             self._cluster.cluster_config_options(config, prefix)
             self._gadget3_child_options(config, prefix)
+
         return g_config_filename
 
     def _gadget3_child_options(self, _, __):
-        """Gadget-3 compilation options for Config.sh which should be written by the child class
-        This is MP-Gadget, so it is likely there are none."""
+        """Gadget-3 compilation options for Config.sh which should be written by
+        the child class. This is MP-Gadget, so it is likely there are none."""
         return
 
     def gadget3params(self, genicfileout):
@@ -434,7 +519,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         config['OmegaLambda']  = 1 - self.omega0
 
         #OmegaBaryon should be zero for gadget if we don't have gas particles
-        config['OmegaBaryon'] = self.omegab * False # self.separate_gas; always False for dm-only
+        config['OmegaBaryon'] = self.omegab * False # self.separate_gas; 
+                                                    # always False for dm-only
         config['HubbleParam'] = self.hubble
         config['RadiationOn'] = 1
         config['HydroOn']     = 1
@@ -453,9 +539,12 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         #FOF
         config['SnapshotWithFOF']      = 1
         config['FOFHaloLinkingLength'] = 0.2
-        config['OutputList']           =  ','.join([str(t) for t in self.generate_times()])
+        config['OutputList']           =  ','.join(
+            [str(t) for t in self.generate_times()])
+
         #These are only used for gas, but must be set anyway
         config['MinGasTemp'] = 100
+
         #In equilibrium with the CMB at early times.
         config['InitGasTemp'] = 2.7*(1+self.redshift)
         config['DensityIndependentSphOn'] = 1
@@ -481,6 +570,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         config = self._other_params(config)
         config.update(self._cluster.cluster_runtime())
         config.write()
+
         return
 
     # def _sfr_params(self, config):
@@ -525,25 +615,38 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
             g_mtime = -1
         self.gadget_git = utils.get_git_hash(gadget_binary)
         try:
-            self.make_output = subprocess.check_output(["make", "-j"], cwd=self.gadget_dir, universal_newlines=True, stderr=subprocess.STDOUT, shell=True)
+            self.make_output = subprocess.check_output(
+                ["make", "-j"], cwd=self.gadget_dir, universal_newlines=True,
+                stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
             print(e.output)
             raise
+
         #Check that the last-changed time of the binary has actually changed..
         assert g_mtime != os.stat(gadget_binary).st_mtime
         shutil.copy(gadget_binary, os.path.join(os.path.dirname(gadget_config),self.gadgetexe))
 
-    def generate_mpi_submit(self, genicout):
+    def generate_mpi_submit(self, genicout, return_str=False):
         """Generate a sample mpi_submit file.
         The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
         self._cluster.generate_mpi_submit(self.outdir)
+
         #Generate an mpi_submit for genic
         zstr = self._camb_zstr(self.redshift)
-        check_ics = "python cambpower.py "+genicout+" --czstr "+zstr+" --mnu "+str(self.m_nu)
-        self._cluster.generate_mpi_submit_genic(self.outdir, extracommand=check_ics)
+        check_ics = "python cambpower.py {} --czstr {} --mnu {}".format(
+            genicout, zstr, str(self.m_nu))
+
+        if return_str:
+            return self._cluster.generate_mpi_submit_genic(
+                self.outdir, extracommand=check_ics)
+
+        self._cluster.generate_mpi_submit_genic(
+            self.outdir, extracommand=check_ics)            
+
         #Copy the power spectrum routine
-        shutil.copy(os.path.join(os.path.dirname(__file__),"cambpower.py"), os.path.join(self.outdir,"cambpower.py"))
+        shutil.copy(os.path.join(os.path.dirname(__file__), "cambpower.py"),
+            os.path.join(self.outdir, "cambpower.py"))
 
     def make_simulation(self, pkaccuracy=0.05, do_build=False):
         """Wrapper function to make the simulation ICs."""
@@ -578,20 +681,25 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         #Compile from source; usually not need
         if do_build:
             subprocess.check_call(
-                [os.path.join(os.path.join(self.gadget_dir, "genic"),self.genicexe), genic_param],
+                [os.path.join(os.path.join(self.gadget_dir, "genic"),
+                                           self.genicexe), 
+                              genic_param],
                 cwd=self.outdir)
 
             zstr = self._camb_zstr(self.redshift)
-            cambpower.check_ic_power_spectra(
-                genic_output, camb_zstr=zstr, m_nu=self.m_nu, outdir=self.outdir, accuracy=pkaccuracy)
+            cambpower.check_ic_power_spectra(genic_output, camb_zstr=zstr,
+                m_nu=self.m_nu, outdir=self.outdir, accuracy=pkaccuracy)
 
             self.do_gadget_build(gadget_config)
+
         return gadget_config
 
 def save_transfer(transfer, transferfile):
-    """Save a transfer function. Note we save the CLASS FORMATTED transfer functions.
+    """
+    Save a transfer function. Note we save the CLASS FORMATTED transfer functions.
     The transfer functions differ from CAMB by:
-        T_CAMB(k) = -T_CLASS(k)/k^2 """
+        T_CAMB(k) = -T_CLASS(k)/k^2
+    """
     header="""Transfer functions T_i(k) for adiabatic (AD) mode (normalized to initial curvature=1)
 d_i   stands for (delta rho_i/rho_i)(k,z) with above normalization
 d_tot stands for (delta rho_tot/rho_tot)(k,z) with rho_Lambda NOT included in rho_tot
