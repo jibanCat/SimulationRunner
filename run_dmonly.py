@@ -3,17 +3,18 @@ Create a dm-only simulation filefolder, for multi-fidelity tests.
 making resolution and boxsize as two major hyperparameters,
 making outher cosmological parameters as another input dict.
 '''
+from typing import Generator
 import os
 import argparse
 import json
 from SimulationRunner import simulationics
 
-def run_dmonly(box, npart, 
-        hubble, omega0, omegab, scalar_amp, ns,
-        outdir="data"):
+def run_dmonly(box: int, npart: int,
+        hubble: float, omega0: float, omegab: float,
+        scalar_amp: float, ns: float,
+        outdir: str = "data",
+        gadget_dir: str = "~/bigdata/codes/MP-Gadget/") -> None:
     """Create a full simulation with no gas"""
-
-    outdir = os.path.join(os.path.dirname(__file__),"tests/test2")
 
     Sim = simulationics.SimulationICs(
         outdir=outdir, box = box, npart = npart, redshift = 99, redend = 0,
@@ -25,20 +26,20 @@ def run_dmonly(box, npart,
 
     #shutil.rmtree(outdir)
 
-def take_params_dict(Latin_dict):
+def take_params_dict(Latin_dict: dict) -> Generator:
     '''
     take the next param dict with a single
     sample for each param
     '''
-    all_keys = Latin_dict.keys()
-    length   = len(Latin_dict[all_keys[0]])
+    parameter_names = Latin_dict['parameter_names']
+    length          = len(Latin_dict[parameter_names[0]])
     
-    assert length == Latin_dict[all_keys[-1]]
+    assert length == Latin_dict[parameter_names[-1]]
 
     for i in range(length):
         param_dict = {}
 
-        for key in all_keys:
+        for key in parameter_names:
             param_dict[key] = Latin_dict[key][i]
         
         yield param_dict
@@ -52,6 +53,9 @@ if __name__ == "__main__":
     # should write another function to generate samples
     parser.add_argument("--json_file", type=str, default="paramLatin.json")
     
+    parser.add_argument("--gadget_dir", type=str,
+        default="~/bigdata/codes/MP-Gadget/")
+
     # keep a separated flags for boxsize and resolution
     parser.add_argument("--box", type=int, default=256)
     parser.add_argument("--res", type=int, default=128)
@@ -64,7 +68,8 @@ if __name__ == "__main__":
     # handle the param file generation one-by-one
     for i,param_dict in enumerate(take_params_dict(Latin_dict)):
         # outdir auto generated, since we will have many folders
-        outdir = "{}-{}-dmonly_{}".format(
+        outdir = "test-{}-{}-dmonly_{}".format(
             args.res, args.box, str(i).zfill(4))
 
-        run_dmonly(args.box, args.res, **param_dict)
+        run_dmonly(args.box, args.res, gadget_dir=args.gadget_dir,
+            **param_dict)
