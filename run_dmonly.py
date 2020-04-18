@@ -20,7 +20,7 @@ def run_dmonly(box: int, npart: int,
         outdir=outdir, box = box, npart = npart, redshift = 99, redend = 0,
         hubble = hubble, omega0 = omega0, 
         omegab = omegab, scalar_amp = scalar_amp,
-        ns     = ns)
+        ns     = ns, gadget_dir = gadget_dir)
     Sim.make_simulation(pkaccuracy=0.07)
     assert os.path.exists(outdir)
 
@@ -34,7 +34,7 @@ def take_params_dict(Latin_dict: dict) -> Generator:
     parameter_names = Latin_dict['parameter_names']
     length          = len(Latin_dict[parameter_names[0]])
     
-    assert length == Latin_dict[parameter_names[-1]]
+    assert length == len(Latin_dict[parameter_names[-1]])
 
     for i in range(length):
         param_dict = {}
@@ -71,5 +71,6 @@ if __name__ == "__main__":
         outdir = "test-{}-{}-dmonly_{}".format(
             args.res, args.box, str(i).zfill(4))
 
-        run_dmonly(args.box, args.res, gadget_dir=args.gadget_dir,
+        run_dmonly(args.box, args.res, 
+            outdir=outdir, gadget_dir=args.gadget_dir,
             **param_dict)
