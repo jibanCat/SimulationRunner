@@ -57,7 +57,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--gadget_dir", type=str,
         default="~/bigdata/codes/MP-Gadget/")
-    parser.add_argument("cluster_class", type=str,
+    parser.add_argument("--cluster_class", type=str,
         default="clusters.BIOClass")
 
     # keep a separated flags for boxsize and resolution
