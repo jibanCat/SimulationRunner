@@ -1,5 +1,6 @@
 """Class to generate simulation ICS, separated out for clarity."""
 from __future__ import print_function
+from typing import Tuple, List, Type, Any
 import os.path
 import math
 import subprocess
@@ -56,11 +57,14 @@ class SimulationICs(object):
     separate_gas - if true the ICs will contain baryonic particles;
         If false, just DM.
     """
-    def __init__(self, *, outdir, box, npart, seed = 9281110, redshift=99,
-            redend=0, omega0=0.288, omegab=0.0472, hubble=0.7, 
-            scalar_amp=2.427e-9, ns=0.97, rscatter=False, m_nu=0,
-            nu_hierarchy='degenerate', uvb="pu", 
-            cluster_class=clusters.StampedeClass, nu_acc=1e-5, unitary=True):
+    def __init__(self, *, outdir: str, box: int, npart: int,
+            seed : int = 9281110, redshift: float = 99,
+            redend: float = 0, omega0: float = 0.288, omegab: float = 0.0472, 
+            hubble: float = 0.7, scalar_amp: float = 2.427e-9, 
+            ns: float = 0.97, rscatter: bool = False, m_nu: float = 0,
+            nu_hierarchy: str = 'degenerate', uvb: str = "pu",
+            cluster_class: Type[clusters.StampedeClass] = clusters.StampedeClass, 
+            nu_acc: float = 1e-5, unitary: bool = True) -> None:
         #Check that input is reasonable and set parameters
         #In Mpc/h
         assert box  < 20000
@@ -136,7 +140,7 @@ class SimulationICs(object):
         #at time of running.
         self.simulation_git = utils.get_git_hash(os.path.dirname(__file__))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         print_string  = "MP-Gadget path: {}\n\n".format(self.gadget_dir)
 
         # Hyperparameter for simulations 
@@ -168,17 +172,17 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         return print_string
     
     @property
-    def json(self):
+    def json(self) -> dict:
         """
         these are the variables will be saved into json
         """
         return self.__dict__
 
     @property
-    def cluster(self):
+    def cluster(self) -> clusters.ClusterClass:
         return self._cluster
 
-    def _set_default_paths(self):
+    def _set_default_paths(self) -> None:
         """Default paths and parameter names. 
         This is part of the __init__ construction"""
         #Default parameter file names
@@ -198,7 +202,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         # this is absolute path so make sure binary is there
         self.gadget_dir   = os.path.expanduser("~/codes/MP-Gadget/")
 
-    def cambfile(self):
+    def cambfile(self) -> str:
         """
         Generate the IC power spectrum using classylss.
         
@@ -306,7 +310,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
         return camb_output
 
-    def _camb_zstr(self,zz):
+    def _camb_zstr(self, zz : float) -> str:
         """Get the formatted redshift for CAMB output files."""
         if zz > 10:
             zstr = str(int(zz))
@@ -314,7 +318,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
             zstr = '%.1g' % zz
         return zstr
 
-    def genicfile(self, camb_output):
+    def genicfile(self, camb_output : str) -> Tuple[str, Any]:
         """
         Generate the GenIC parameter file
         
@@ -387,7 +391,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
         return (os.path.join(genicout, genicfile), config.filename)
 
-    def _alter_power(self, camb_output):
+    def _alter_power(self, camb_output: str) -> None:
         """
         Function to hook if you want to change the CAMB output power spectrum.
         Should save the new power spectrum to camb_output + _matterpow_str(redshift).dat
@@ -405,33 +409,24 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         os.stat(camb_file)
         return
 
-    def _genicfile_child_options(self, config):
+    def _genicfile_child_options(self,
+            config : configobj.ConfigObj) -> configobj.ConfigObj:
         """Set extra parameters in child classes"""
         return config
 
-    def _fromarray(self):
-        """Convert the data stored as lists back to what it was."""
-        for arr in self._really_arrays:
-            self.__dict__[arr] = np.array(self.__dict__[arr])
-        self._really_arrays = []
-        for arr in self._really_types:
-            #Some crazy nonsense to convert the module, name
-            #string tuple we stored back into a python type.
-            mod = importlib.import_module(self.__dict__[arr][0])
-            self.__dict__[arr] = getattr(mod, self.__dict__[arr][1])
-        self._really_types = []
-
-    def txt_description(self):
+    def txt_description(self) -> None:
         """
         Generate a text file describing the parameters of the code that generated
         this simulation, for reproducibility.
         """
         #But ditch the output of make
         self.make_output = ""
-        self._really_arrays = []
-        self._really_types = []
+        self._really_arrays: List[str]= []
+        self._really_types: List[str] = []
         cc = self._cluster
-        self._cluster = 0
+        self._cluster = 0   # this line causes mypy incompatible problem, but
+                            # currently I ingore it due to do not want to make
+                            # too many modifications to previous code
 
         for nn, val in self.__dict__.items():
             #Convert arrays to lists
@@ -449,7 +444,19 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self._fromarray()
         self._cluster = cc
 
-    def load_txt_description(self):
+    def _fromarray(self) -> None:
+        """Convert the data stored as lists back to what it was."""
+        for arr in self._really_arrays:
+            self.__dict__[arr] = np.array(self.__dict__[arr])
+        self._really_arrays = []
+        for arr in self._really_types:
+            #Some crazy nonsense to convert the module, name
+            #string tuple we stored back into a python type.
+            mod = importlib.import_module(self.__dict__[arr][0])
+            self.__dict__[arr] = getattr(mod, self.__dict__[arr][1])
+        self._really_types = []
+
+    def load_txt_description(self) -> None:
         """
         Load the text file describing the parameters of the code that generated
         a simulation.
@@ -460,7 +467,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self._fromarray()
         self._cluster = cc
 
-    def gadget3config(self, prefix="OPT += -D"):
+    def gadget3config(self, prefix: str = "OPT += -D") -> str:
         """
         Generate a config Options file for Yu Feng's MP-Gadget.
         This code is configured via runtime options.
@@ -483,16 +490,17 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
                 "GSL_INCL = $(shell gsl-config --cflags)\n"
                 "GSL_LIBS = $(shell gsl-config --libs)\n"))
             self._cluster.cluster_config_options(config, prefix)
-            self._gadget3_child_options(config, prefix)
+            # self._gadget3_child_options(config, prefix)
 
         return g_config_filename
 
-    def _gadget3_child_options(self, _, __):
-        """Gadget-3 compilation options for Config.sh which should be written by
-        the child class. This is MP-Gadget, so it is likely there are none."""
-        return
+    # unknown function here
+    # def _gadget3_child_options(self, _, __) ->:
+    #     """Gadget-3 compilation options for Config.sh which should be written by
+    #     the child class. This is MP-Gadget, so it is likely there are none."""
+    #     return
 
-    def gadget3params(self, genicfileout):
+    def gadget3params(self, genicfileout: str) -> None:
         """MP-Gadget parameter file. This *is* a configobj.
         Note MP-Gadget supports default arguments, so no need for a defaults file.
 
@@ -583,11 +591,11 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
     #     """Config parameters for the feedback models"""
     #     return config
 
-    def _other_params(self, config):
+    def _other_params(self, config: configobj.ConfigObj) -> configobj.ConfigObj:
         """Function to override to set other config parameters"""
         return config
 
-    def generate_times(self):
+    def generate_times(self) -> np.ndarray:
         """List of output times for a simulation. Can be overridden."""
         astart = 1. / (1 + self.redshift)
         aend   = 1. / (1 + self.redend  )
@@ -599,7 +607,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
         return times[ii]
 
-    def do_gadget_build(self, gadget_config):
+    def do_gadget_build(self, gadget_config: str) -> None:
         """Make a gadget build and check it succeeded."""
         conffile = os.path.join(self.gadget_dir, self.gadgetconfig)
         if os.path.islink(conffile):
@@ -626,7 +634,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         assert g_mtime != os.stat(gadget_binary).st_mtime
         shutil.copy(gadget_binary, os.path.join(os.path.dirname(gadget_config),self.gadgetexe))
 
-    def generate_mpi_submit(self, genicout, return_str=False):
+    def generate_mpi_submit(self, genicout: str, return_str: bool = False) -> str:
         """Generate a sample mpi_submit file.
         The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
@@ -648,7 +656,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         shutil.copy(os.path.join(os.path.dirname(__file__), "cambpower.py"),
             os.path.join(self.outdir, "cambpower.py"))
 
-    def make_simulation(self, pkaccuracy=0.05, do_build=False):
+    def make_simulation(self, pkaccuracy: float = 0.05,
+            do_build: bool = False) -> str:
         """Wrapper function to make the simulation ICs."""
         #First generate the input files for CAMB
         camb_output = self.cambfile()
@@ -694,7 +703,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
         return gadget_config
 
-def save_transfer(transfer, transferfile):
+def save_transfer(transfer: np.ndarray, transferfile: str) -> None:
     """
     Save a transfer function. Note we save the CLASS FORMATTED transfer functions.
     The transfer functions differ from CAMB by:
@@ -711,7 +720,7 @@ t_tot stands for (sum_i [rho_i+p_i] theta_i)/(sum_i [rho_i+p_i]))(k,z)
     #This format matches the default output by CLASS command line.
     np.savetxt(transferfile, transfer, header=header)
 
-def get_neutrino_masses(total_mass, hierarchy):
+def get_neutrino_masses(total_mass: float, hierarchy: str) -> np.ndarray:
     """Get the three neutrino masses, including the mass splittings.
         Hierarchy is 'inverted' (two heavy), 'normal' (two light) or degenerate."""
     #Neutrino mass splittings
