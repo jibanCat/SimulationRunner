@@ -64,7 +64,8 @@ class SimulationICs(object):
             ns: float = 0.97, rscatter: bool = False, m_nu: float = 0,
             nu_hierarchy: str = 'degenerate', uvb: str = "pu",
             cluster_class: Type[clusters.StampedeClass] = clusters.StampedeClass, 
-            nu_acc: float = 1e-5, unitary: bool = True) -> None:
+            nu_acc: float = 1e-5, unitary: bool = True,
+            gadget_dir: str = "~/codes/MP-Gadget/") -> None:
         #Check that input is reasonable and set parameters
         #In Mpc/h
         assert box  < 20000
@@ -128,7 +129,7 @@ class SimulationICs(object):
         self.nu_hierarchy = nu_hierarchy
 
         self.outdir = outdir
-        self._set_default_paths()
+        self._set_default_paths(gadget_dir)
 
         # initialize the cluster object: to store the submit info for specific
         # cluster in used
@@ -182,7 +183,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
     def cluster(self) -> clusters.ClusterClass:
         return self._cluster
 
-    def _set_default_paths(self) -> None:
+    def _set_default_paths(self,
+            gadget_dir: str = "~/codes/MP-Gadget/") -> None:
         """Default paths and parameter names. 
         This is part of the __init__ construction"""
         #Default parameter file names
@@ -200,7 +202,7 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         self.gadgetconfig = "Options.mk"
 
         # this is absolute path so make sure binary is there
-        self.gadget_dir   = os.path.expanduser("~/codes/MP-Gadget/")
+        self.gadget_dir   = os.path.expanduser(gadget_dir)
 
     def cambfile(self) -> str:
         """
