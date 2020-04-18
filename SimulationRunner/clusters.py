@@ -2,15 +2,17 @@
 Specialised module to contain functions to specialise the simulation run to
 different clusters
 """
+from typing import List, Union, Any, TextIO
 import os.path
 
 class ClusterClass:
     """
     Generic class implementing some general defaults for cluster submissions.
     """
-    def __init__(self, gadget="MP-Gadget", genic="MP-GenIC", 
-            param="mpgadget.param", genicparam="_genic_params.ini", nproc=256, 
-            timelimit=24, cluster_name="Template"):
+    def __init__(self, gadget: str = "MP-Gadget", genic: str = "MP-GenIC", 
+            param: str = "mpgadget.param", 
+            genicparam: str = "_genic_params.ini", nproc: int = 256, 
+            timelimit: Union[float, int] = 24, cluster_name: str = "Template") -> None:
         """
         CPU parameters (walltime, number of cpus, etc):
         these are specified to a default here, but should be over-ridden in a
@@ -27,7 +29,7 @@ class ClusterClass:
         self.genicexe    = genic
         self.genicparam  = genicparam
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         '''
         print out the default setting
         '''
@@ -38,7 +40,7 @@ class ClusterClass:
 
         return print_string
 
-    def generate_mpi_submit(self, outdir, return_str=False):
+    def generate_mpi_submit(self, outdir: str, return_str: bool = False) -> Any:
         """
         Generate a sample mpi_submit file.
         The prefix argument is a string at the start of each line.
@@ -73,13 +75,16 @@ class ClusterClass:
             # mpirun -np {nproc} {command}
             mpis.write(self._mpi_program(command="{} {}".format(
                     self.gadgetexe, self.gadgetparam)))
+        
+        return
 
     def generate_mpi_submit_genic(
-            self, outdir, extracommand=None, return_str=False):
+            self, outdir: str, extracommand: Union[str, Any] = None,
+            return_str: bool = False) -> Any:
         """Generate a sample mpi_submit file for MP-GenIC.
         The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
-        name = os.path.basename(os.path.normpath(outdir))
+        name: str = os.path.basename(os.path.normpath(outdir))
 
         if return_str:
             mpis  = "#!/bin/bash\n"
@@ -98,12 +103,14 @@ class ClusterClass:
             if extracommand is not None:
                 mpis.write(extracommand+"\n")
 
-    def _mpi_program(self, command):
+        return
+
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute"""
         qstring = "mpirun -np {} {}\n".format(str(self.nproc), command)
         return qstring
 
-    def timestring(self, timelimit):
+    def timestring(self, timelimit: Union[float, int]) -> str:
         """Convert a fractional timelimit into a string"""
         hr     = int(timelimit)
         minute = int((timelimit - hr)*60)
@@ -113,7 +120,9 @@ class ClusterClass:
 
         return timestring
 
-    def _queue_directive(self, name, timelimit, nproc=16, prefix="#PBS"):
+    def _queue_directive(self, name: Union[str, TextIO],
+            timelimit: Union[float, int], 
+            nproc: int = 16, prefix: str = "#PBS") -> str:
         """Write the part of the mpi_submit file that directs the queueing 
         system. This is usually specific to a given cluster.
         The prefix argument is a string at the start of each line.
@@ -128,11 +137,11 @@ class ClusterClass:
 
         return qstring
 
-    def cluster_runtime(self):
+    def cluster_runtime(self) -> dict:
         """Runtime options for cluster. Applied to both MP-GenIC and MP-Gadget."""
         return {}
 
-    def cluster_config_options(self,config, prefix=""):
+    def cluster_config_options(self, config: str, prefix: str = "") -> None:
         """Config options that might be specific to a particular cluster"""
         _ = (config, prefix)
         #isend/irecv is quite slow on some clusters because of the extra memory 
@@ -142,7 +151,7 @@ class ClusterClass:
         #config.write(prefix+"NO_ISEND_IRECV_IN_PM\n")
         #config.write(prefix+"NOTYPEPREFIX_FFTW\n")
 
-    def cluster_optimize(self):
+    def cluster_optimize(self) -> str:
         """Compiler optimisation options for a specific cluster.
         Only MP-Gadget pays attention to this."""
         return "-fopenmp -O3 -g -Wall -ffast-math -march=native"
@@ -150,11 +159,13 @@ class ClusterClass:
 class HipatiaClass(ClusterClass):
     """Subclassed for specific properties of the Hipatia cluster in Barcelona.
     __init__ and _queue_directive are changed."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs, cluster_name="Hipatia")
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(cluster_name = "Hipatia" )
         self.memory = 2500
 
-    def _queue_directive(self, name, timelimit, nproc=16, prefix="#PBS"):
+    def _queue_directive(self, name: Union[str, TextIO],
+            timelimit: Union[float, int], nproc: int = 16,
+            prefix: str = "#PBS") -> str:
         """Generate mpi_submit with coma specific parts"""
         qstring = super()._queue_directive(name=name, prefix=prefix, timelimit=timelimit)
         qstring += prefix+" -l nodes="+str(int(nproc/16))+":ppn=16\n"
@@ -163,7 +174,7 @@ class HipatiaClass(ClusterClass):
         qstring += prefix+" -V\n"
         return qstring
 
-    def _mpi_program(self, command):
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute. 
         Hipatia is weird because PBS_JOBID needs to be unset for the job to 
         launch."""
@@ -179,14 +190,16 @@ class MARCCClass(ClusterClass):
     This has 24 cores per node, shared memory of 128GB pr node.
     Ask for complete nodes.
     Uses SLURM."""
-    def __init__(self, *args, nproc=48,timelimit=8,**kwargs):
+    def __init__(self, *args, nproc: int = 48, timelimit: Union[float, int] = 8,
+            **kwargs) -> None:
         #Complete nodes!
         assert nproc % 24 == 0
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
-            cluster_name="MARCC")
+        super().__init__(nproc = nproc, timelimit = timelimit,
+            cluster_name = "MARCC")
         self.memory = 5000
 
-    def _queue_directive(self, name, timelimit, nproc=48, prefix="#SBATCH"):
+    def _queue_directive(self, name: Union[str, TextIO], timelimit: Union[float, int], nproc: int = 48,
+            prefix: str = "#SBATCH") -> str:
         """Generate mpi_submit with coma specific parts"""
         _ = timelimit
         qstring = prefix+" --partition=parallel\n"
@@ -203,7 +216,7 @@ class MARCCClass(ClusterClass):
         qstring += prefix+" --mail-user="+self.email+"\n"
         return qstring
 
-    def _mpi_program(self, command):
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute.
         Note that this assumes you aren't using threads!"""
         #Change to current directory
@@ -216,7 +229,7 @@ class MARCCClass(ClusterClass):
         qstring += "mpirun --map-by core "+command+"\n"
         return qstring
 
-    def cluster_optimize(self):
+    def cluster_optimize(self) -> str:
         """Compiler optimisation options for a specific cluster.
         Only MP-Gadget pays attention to this."""
         return "-fopenmp -O3 -g -Wall -march=native"
@@ -226,16 +239,19 @@ class BIOClass(ClusterClass):
     This has 32 cores per node, shared memory of 128GB per node.
     Ask for complete nodes.
     Uses SLURM."""
-    def __init__(self, *args, nproc=256, timelimit=2, **kwargs):
+    def __init__(self, *args, nproc: int = 256, timelimit: Union[float, int] = 2,
+            **kwargs) -> None:
         #Complete nodes!
         assert nproc % 32 == 0
 
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
+        super().__init__(nproc=nproc, timelimit=timelimit,
             cluster_name="BIOCluster")
 
         self.memory = 4
 
-    def _queue_directive(self, name, timelimit, nproc=256, prefix="#SBATCH"):
+    def _queue_directive(self, name: Union[str, TextIO],
+            timelimit: Union[float, int], nproc: int = 256,
+            prefix: str = "#SBATCH") -> str:
         """Generate mpi_submit with coma specific parts"""
         _ = timelimit
 
@@ -258,7 +274,7 @@ class BIOClass(ClusterClass):
 
         return qstring
 
-    def _mpi_program(self, command):
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute.
         Note that this assumes you aren't using threads!"""
         #Change to current directory
@@ -272,16 +288,16 @@ class BIOClass(ClusterClass):
         qstring += "mpirun --map-by core " + command + "\n"
         return qstring
 
-    def cluster_runtime(self):
+    def cluster_runtime(self) -> dict:
         """Runtime options for cluster. Here memory."""
         return {'MaxMemSizePerNode': 4 * 32 * 950}
 
-    def cluster_optimize(self):
+    def cluster_optimize(self) -> str:
         """Compiler optimisation options for a specific cluster.
         Only MP-Gadget pays attention to this."""
         return "-fopenmp -O3 -g -Wall -ffast-math -march=corei7"
 
-    def generate_spectra_submit(self, outdir):
+    def generate_spectra_submit(self, outdir: str) -> None:
         """Generate a sample spectra_submit file, which generates artificial 
         spectra. The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
@@ -307,11 +323,14 @@ class StampedeClass(ClusterClass):
     This has 48 cores (96 threads) per node, each with two sockets, shared 
     memory of 192GB per node, 96 GB per socket.
     Charged in node-hours, uses SLURM and icc."""
-    def __init__(self, *args, nproc=2,timelimit=3,**kwargs):
-        super().__init__(*args, nproc=nproc,timelimit=timelimit, **kwargs,
+    def __init__(self, *args, nproc: int = 2, timelimit: Union[float, int] = 3,
+            **kwargs) -> None:
+        super().__init__(nproc=nproc,timelimit=timelimit,
             cluster_name="Stampede")
 
-    def _queue_directive(self, name, timelimit, nproc=2, prefix="#SBATCH",ntasks=4):
+    def _queue_directive(self, name: Union[str, TextIO],
+            timelimit: Union[float, int], nproc: int = 2,
+            prefix: str = "#SBATCH", ntasks: int = 4) -> str:
         """Generate mpi_submit with stampede specific parts"""
         _ = timelimit
         qstring = prefix+" --partition=skx-normal\n"
@@ -328,7 +347,7 @@ class StampedeClass(ClusterClass):
 
         return qstring
 
-    def _mpi_program(self, command):
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute."""
         #Should be 96/ntasks-per-node. This uses the hyperthreading,
         #which is perhaps an extra 10% performance.
@@ -336,7 +355,7 @@ class StampedeClass(ClusterClass):
         qstring += "ibrun {}\n".format(command)
         return qstring
 
-    def generate_spectra_submit(self, outdir):
+    def generate_spectra_submit(self, outdir: str) -> None:
         """Generate a sample spectra_submit file, which generates artificial 
         spectra. The prefix argument is a string at the start of each line.
         It separates queueing system directives from normal comments"""
@@ -351,13 +370,13 @@ class StampedeClass(ClusterClass):
                     "site-packages/:$PYTHONPATH\n"))
             mpis.write("python3 flux_power.py output")
 
-    def cluster_runtime(self):
+    def cluster_runtime(self) -> dict:
         """Runtime options for cluster."""
         #Trying to print a backtrace causes the job to hang on exit
         return {'ShowBacktrace': 0}
 
 
-    def cluster_optimize(self):
+    def cluster_optimize(self) -> str:
         """Compiler optimisation options for stampede.
         Only MP-Gadget pays attention to this."""
         #TACC_VEC_FLAGS generates one binary for knl, one for skx.
@@ -365,10 +384,12 @@ class StampedeClass(ClusterClass):
 
 class HypatiaClass(ClusterClass):
     """Subclass for Hypatia cluster in UCL"""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs, cluster_name="Hypatia")
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(cluster_name="Hypatia")
 
-    def _queue_directive(self, name, timelimit, nproc=256, prefix="#PBS"):
+    def _queue_directive(self, name: Union[str, TextIO],
+            timelimit: Union[float, int], nproc: int = 256,
+            prefix: str = "#PBS") -> str:
         """Generate Hypatia-specific mpi_submit"""
         _ = timelimit
         qstring = prefix+" -m bae\n"
@@ -381,7 +402,7 @@ class HypatiaClass(ClusterClass):
         qstring += prefix+" -V\n"
         return qstring
 
-    def _mpi_program(self, command):
+    def _mpi_program(self, command: str) -> str:
         """String for MPI program to execute. 
         Hipatia is weird because PBS_JOBID needs to be unset for the job to 
         launch."""
