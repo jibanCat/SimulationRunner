@@ -9,19 +9,25 @@ import argparse
 import json
 from SimulationRunner import simulationics, clusters
 
-def run_dmonly(box: int, npart: int,
-        hubble: float, omega0: float, omegab: float,
-        scalar_amp: float, ns: float,
-        outdir: str = "data",
+def run_dmonly(box: int,   npart: int,
+        hubble:     float, omega0: float, omegab: float,
+        scalar_amp: float, ns:     float,
+        nproc :     int,   cores: int,
+        outdir:     str = "data",
         gadget_dir: str = "~/bigdata/codes/MP-Gadget/",
+        python:     str = "~/.conda/envs/simrun/bin/python", # it's annoying
         cluster_class: Type[clusters.BIOClass] = clusters.BIOClass) -> None:
     """Create a full simulation with no gas"""
 
     Sim = simulationics.SimulationICs(
-        outdir=outdir, box = box, npart = npart, redshift = 99, redend = 0,
+        redshift = 99, redend = 0,
+        box    = box, npart = npart,
         hubble = hubble, omega0 = omega0, 
-        omegab = omegab, scalar_amp = scalar_amp,
-        ns     = ns, gadget_dir = gadget_dir,
+        omegab = omegab, scalar_amp = scalar_amp, ns = ns,
+        nproc  = nproc, cores=cores,
+        outdir = outdir,
+        gadget_dir = gadget_dir,
+        python = python,
         cluster_class = cluster_class)
     Sim.make_simulation(pkaccuracy=0.07)
     assert os.path.exists(outdir)
@@ -64,6 +70,10 @@ if __name__ == "__main__":
     parser.add_argument("--box", type=int, default=256)
     parser.add_argument("--res", type=int, default=128)
 
+    # mpi settings
+    parser.add_argument("--nproc", type=int, default=256)
+    parser.add_argument("--cores", type=int, default=32)
+
     args = parser.parse_args()
 
     # make the cluster class to be a str so can put in argparser
@@ -79,6 +89,7 @@ if __name__ == "__main__":
             args.res, args.box, str(i).zfill(4))
 
         run_dmonly(args.box, args.res, 
+            nproc=args.nproc, cores=args.cores,
             outdir=outdir, gadget_dir=args.gadget_dir,
             cluster_class=cc,
             **param_dict)
