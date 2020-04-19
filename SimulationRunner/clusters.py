@@ -11,30 +11,35 @@ class ClusterClass:
     """
     def __init__(self, gadget: str = "MP-Gadget", genic: str = "MP-GenIC", 
             param: str = "mpgadget.param", 
-            genicparam: str = "_genic_params.ini", nproc: int = 256, 
-            timelimit: Union[float, int] = 24, cluster_name: str = "Template") -> None:
+            genicparam: str = "_genic_params.ini", 
+            nproc: int = 256, cores: int = 16,
+            timelimit: Union[float, int] = 24, cluster_name: str = "Template",
+            gadget_dir: str = "~/bigdata/code/MP-Gadget/") -> None:
         """
         CPU parameters (walltime, number of cpus, etc):
         these are specified to a default here, but should be over-ridden in a
         machine-specific decorator."""
         self.nproc        = nproc
+        self.cores        = cores
         self.email        = "mho026@ucr.edu"
         self.timelimit    = timelimit
         self.cluster_name = cluster_name
-    
+
+        self.gadget_dir   = os.path.expanduser(gadget_dir)
+
         #Maximum memory available for an MPI task
         self.memory      = 1800
-        self.gadgetexe   = gadget
+        self.gadgetexe   = os.path.join( self.gadget_dir, 'gadget', gadget )
         self.gadgetparam = param
-        self.genicexe    = genic
+        self.genicexe    = os.path.join( self.gadget_dir, 'genic', genic   )
         self.genicparam  = genicparam
 
     def __repr__(self) -> str:
         '''
         print out the default setting
         '''
-        print_string  = "N Processers: {}; Email: {}\n".format(
-            self.nproc, self.email)
+        print_string  = "N Processers: {}; N cores: {}; N nodes: {}; Email: {}\n".format(
+            self.nproc, self.cores, self.nproc // self.cores, self.email)
         print_string += "Timelimit: {}\n".format(
             self.timestring(self.timelimit))
 
@@ -240,14 +245,19 @@ class BIOClass(ClusterClass):
     Ask for complete nodes.
     Uses SLURM."""
     def __init__(self, nproc: int = 256, timelimit: Union[float, int] = 2,
-            cluster_name: str = "BIOCluster", *args, **kwargs) -> None:
+            cluster_name: str = "BIOCluster", 
+            cores: int = 32, memory: int = 4, *args, **kwargs) -> None:
         #Complete nodes!
-        assert nproc % 32 == 0
+        # I change to not complete node since I will submit 
+        # many jobs concurrently. 8 * 32 is the group limit, so you can only
+        # submit this kind of job one at the time and the other people cannot 
+        # submit anything.
+        assert nproc % cores == 0
 
         super().__init__(nproc=nproc, timelimit=timelimit,
-            cluster_name=cluster_name)
+            cluster_name=cluster_name, cores=cores)
 
-        self.memory = 4
+        self.memory : int = memory
 
     def _queue_directive(self, name: Union[str, TextIO],
             timelimit: Union[float, int], nproc: int = 256,
@@ -259,16 +269,16 @@ class BIOClass(ClusterClass):
         qstring =  prefix + " --partition=short\n"
         qstring += prefix + " --job-name={}\n".format(name)
         qstring += prefix + " --time={}\n".format(self.timestring(timelimit))
-        qstring += prefix + " --nodes={}\n".format(str(int(nproc/32)))
+        qstring += prefix + " --nodes={}\n".format(str(int(nproc/self.cores)))
 
         #Number of tasks (processes) per node
-        qstring += prefix + " --ntasks-per-node=32\n"
+        qstring += prefix + " --ntasks-per-node={}\n".format(self.cores)
 
         #Number of cpus (threads) per task (process)
         qstring += prefix + " --cpus-per-task=1\n"
 
         #Max 128 GB per node (24 cores)
-        qstring += prefix + " --mem-per-cpu=4G\n"
+        qstring += prefix + " --mem-per-cpu={}G\n".format(self.memory)
         qstring += prefix + " --mail-type=end\n"
         qstring += prefix + " --mail-user={}\n".format(self.email)
 
@@ -280,6 +290,8 @@ class BIOClass(ClusterClass):
         #Change to current directory
         qstring = "export OMP_NUM_THREADS=1\n"
 
+        qstring += self.slurm_modules()
+
         #This is for threads
         #qstring += "export OMP_NUM_THREADS = $SLURM_CPUS_PER_TASK\n"
         #Adjust for thread/proc balance per socket.
@@ -288,9 +300,30 @@ class BIOClass(ClusterClass):
         qstring += "mpirun --map-by core " + command + "\n"
         return qstring
 
+    def slurm_modules(self) -> str:
+        '''
+        Generate a string to setup the modules I need to load on the BioCluster
+        
+        Example:
+        ----
+        module unload openmpi\n
+        module load mpich\n
+        module load intel\n
+        module load gsl\n
+        '''
+        mstring  = "module unload openmpi\n"
+        mstring += "module load mpich\n"
+        mstring += "module load intel\n"
+        mstring += "module load gsl\n"
+        mstring += "module list\n"
+
+        return mstring
+
     def cluster_runtime(self) -> dict:
         """Runtime options for cluster. Here memory."""
-        return {'MaxMemSizePerNode': 4 * 32 * 950}
+        # return {'MaxMemSizePerNode': 4 * 32 * 950}
+        # return {'MaxMemSizePerNode': 24320} # usually works
+        return {'MaxMemSizePerNode': self.memory * self.cores * 950}
 
     def cluster_optimize(self) -> str:
         """Compiler optimisation options for a specific cluster.
