@@ -3,7 +3,7 @@ Create a dm-only simulation filefolder, for multi-fidelity tests.
 making resolution and boxsize as two major hyperparameters,
 making outher cosmological parameters as another input dict.
 '''
-from typing import Generator, Type
+from typing import Generator, Type, Optional
 import os
 import argparse
 import json
@@ -16,7 +16,8 @@ def run_dmonly(box: int,   npart: int,
         outdir:     str = "data",
         gadget_dir: str = "~/bigdata/codes/MP-Gadget/",
         python:     str = "~/.conda/envs/simrun/bin/python", # it's annoying
-        cluster_class: Type[clusters.BIOClass] = clusters.BIOClass) -> None:
+        cluster_class: Type[clusters.BIOClass] = clusters.BIOClass,
+        test: bool = False) -> Optional[simulationics.SimulationICs]:
     """Create a full simulation with no gas"""
 
     Sim = simulationics.SimulationICs(
@@ -29,6 +30,11 @@ def run_dmonly(box: int,   npart: int,
         gadget_dir = gadget_dir,
         python = python,
         cluster_class = cluster_class)
+
+    # Don't want to write lots of things when testing
+    if test:
+        return Sim
+
     Sim.make_simulation(pkaccuracy=0.07)
     assert os.path.exists(outdir)
 
