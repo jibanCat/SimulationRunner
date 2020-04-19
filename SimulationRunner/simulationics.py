@@ -57,15 +57,19 @@ class SimulationICs(object):
     separate_gas - if true the ICs will contain baryonic particles;
         If false, just DM.
     """
-    def __init__(self, *, outdir: str, box: int, npart: int,
-            seed : int = 9281110, redshift: float = 99,
-            redend: float = 0, omega0: float = 0.288, omegab: float = 0.0472, 
-            hubble: float = 0.7, scalar_amp: float = 2.427e-9, 
-            ns: float = 0.97, rscatter: bool = False, m_nu: float = 0,
-            nu_hierarchy: str = 'degenerate', uvb: str = "pu",
+    def __init__(self, *,
+            outdir: str, box: int,  npart: int,
+            seed :         int   = 9281110,      redshift: float = 99,
+            redend:        float = 0,            omega0:   float = 0.288, 
+            omegab:        float = 0.0472,       hubble:   float = 0.7,
+            scalar_amp:    float = 2.427e-9,     ns:       float = 0.97,
+            rscatter:      bool  = False,        m_nu:     float = 0,
+            nu_hierarchy:  str   = 'degenerate', uvb:      str   = "pu",
+            nu_acc:        float = 1e-5,         unitary:  bool  = True,
             cluster_class: Type[clusters.StampedeClass] = clusters.StampedeClass, 
-            nu_acc: float = 1e-5, unitary: bool = True,
-            gadget_dir: str = "~/codes/MP-Gadget/") -> None:
+            gadget_dir:    str = "~/codes/MP-Gadget/",
+            python:        str = "python",
+            nproc:         int = 256,            cores:    int   = 32) -> None:
         #Check that input is reasonable and set parameters
         #In Mpc/h
         assert box  < 20000
@@ -133,13 +137,19 @@ class SimulationICs(object):
 
         # initialize the cluster object: to store the submit info for specific
         # cluster in used
-        self._cluster = cluster_class(gadget=self.gadgetexe, 
-            param=self.gadgetparam, genic=self.genicexe, 
-            genicparam=self.genicout)
+        self._cluster = cluster_class(
+            gadget = self.gadgetexe, param      = self.gadgetparam, 
+            genic  = self.genicexe,  genicparam = self.genicout, 
+            nproc  = nproc,          cores      = cores) # add nproc and cores
+                                                         # make them optional
 
         #For repeatability, we store git hashes of Gadget, GenIC, CAMB and ourselves
         #at time of running.
         self.simulation_git = utils.get_git_hash(os.path.dirname(__file__))
+
+        # sometime the path to python is slightly different, especially you have
+        # multiple pythons and multiple virtual env
+        self.python = python
 
     def __repr__(self) -> str:
         print_string  = "MP-Gadget path: {}\n\n".format(self.gadget_dir)
@@ -164,9 +174,17 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
         print_string += "----\n"
         print_string += self.cluster.__repr__() + "\n"
 
+        #Generate an mpi_submit for genic
+        zstr = self._camb_zstr(self.redshift)
+        check_ics = "{} cambpower.py {} --czstr {} --mnu {}".format(
+            self.python, self.genicout, zstr, str(self.m_nu))
+
         # In case a sample submission script will be useful:
         print_string += "Example Submission Script:\n"
         print_string += "----\n"
+        print_string += self._cluster.generate_mpi_submit_genic(self.outdir,
+            extracommand=check_ics, return_str=True)
+        print_string += "\n"
         print_string += self._cluster.generate_mpi_submit(self.outdir,
             return_str=True)
 
@@ -644,8 +662,8 @@ n_s    = {}; rscatter = {}; m_nu = {}; nu_hierarchy = {};
 
         #Generate an mpi_submit for genic
         zstr = self._camb_zstr(self.redshift)
-        check_ics = "python cambpower.py {} --czstr {} --mnu {}".format(
-            genicout, zstr, str(self.m_nu))
+        check_ics = "{} cambpower.py {} --czstr {} --mnu {}".format(
+            self.python, genicout, zstr, str(self.m_nu))
 
         if return_str:
             return self._cluster.generate_mpi_submit_genic(
