@@ -39,6 +39,25 @@ def test_lowRes(base_dir : str = "data/lowRes/") -> None:
     test_create_hdf5(all_submission_dirs,
         Latin_json=os.path.join(base_dir, "matterLatin_low.json"))
 
+def test_highRes(base_dir : str = "data/highRes/") -> None:
+    '''
+    Test dm-only test highRes: 512^3 parts
+    '''
+    # lowRes : 512^3 particles and 256 Mpc/h
+    res = 512
+    box = 256
+
+    # Latin Hyper Cube sampling
+    n_simulations = 10
+
+    test_dir = lambda i : os.path.join(
+        base_dir, fn_outdir(i, res, box))
+
+    all_submission_dirs = [test_dir(i) for i in range(n_simulations)]
+
+    # test highRes hdf5
+    test_create_hdf5(all_submission_dirs,
+        Latin_json=os.path.join(base_dir, "matterLatin_high.json"))
 
 def test_create_hdf5(all_submission_dirs: List[str], Latin_json: str) -> None:
     multips = MultiPowerSpec(all_submission_dirs, Latin_json)
