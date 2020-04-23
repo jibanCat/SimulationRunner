@@ -76,17 +76,6 @@ class GadgetLoad(object):
         self.sfr_files   = glob(os.path.join(
             submission_dir, "output", "{}*".format(sfr_prefix) ))
 
-        # read into arrays
-        scale_factors, out = self.read_powerspec(self.powerspec_files)
-
-        self._scale_factors = scale_factors
-        self._powerspecs    = out
-
-        redshifts, out     = self.read_camblinear(self.camb_files)
-
-        self._camb_redshifts = redshifts
-        self._camb_matter    = out
-
         # read in params
         param_filename  = os.path.join(submission_dir, "SimulationICs.json")
         self._param_dict = self.read_simulationics(param_filename)
@@ -109,12 +98,76 @@ class GadgetLoad(object):
         '''files in the output folder'''
         return self._outputfiles
 
+    @staticmethod
+    def read_simulationics(filename: str) -> dict:
+        '''
+        read in the simulationics as a dict
+        '''
+        with open(filename, 'r') as f:
+            out = json.load(f)
+        
+        return out
+
+    @staticmethod
+    def get_number(regex: str, filename: str) -> float:
+        '''
+        Get the number out of the filename using regex
+        '''
+        r = re.compile( regex )
+
+        out = r.findall(filename)
+        
+        assert len(out) == 1
+        del r
+
+        return float(out[0])
+
+    @staticmethod
+    def read_array(filename: str) -> np.ndarray:
+        out = np.loadtxt(filename)
+        return out
+
+    @staticmethod
+    def read_strings(filename: str) -> str:
+        with open(filename, 'r') as f:
+            out = f.read()
+        
+        return out
+
+class PowerSpec(GadgetLoad):
+    '''
+    A class to generate a matrix of powerspec(k, z),
+    with the corresponding SimultionICs.json file.
+
+    Attrs:
+    ----
+    :camb_matter:
+    :camb_redshits:
+    :scale_factors:
+    :powerspecs:
+    '''
+    def __init__(self, submission_dir: str = "test/") -> None:
+        super(PowerSpec, self).__init__(submission_dir)
+
+        # read into arrays
+        # Matter power specs from simulations
+        scale_factors, out = self.read_powerspec(self.powerspec_files)
+
+        self._scale_factors = scale_factors
+        self._powerspecs    = out
+
+        # Matter power specs from CAMB linear theory code
+        redshifts, out     = self.read_camblinear(self.camb_files)
+
+        self._camb_redshifts = redshifts
+        self._camb_matters   = out
+        
     @property
-    def camb_matter(self) -> np.ndarray:
+    def camb_matters(self) -> np.ndarray:
         '''
         The matter powerspecs output by the camb linear theory code
         '''
-        return self._camb_matter
+        return self._camb_matters
 
     @property
     def camb_redshifts(self) -> List:
@@ -135,16 +188,6 @@ class GadgetLoad(object):
     def scale_factors(self) -> List:
         '''The scale factors of powerspecs in output/'''
         return self._scale_factors
-
-    @staticmethod
-    def read_simulationics(filename: str) -> dict:
-        '''
-        read in the simulationics as a dict
-        '''
-        with open(filename, 'r') as f:
-            out = json.load(f)
-        
-        return out
 
     def read_camblinear(self,
             camb_files: List[str]) -> Tuple[np.ndarray, np.ndarray]:
@@ -228,47 +271,30 @@ class GadgetLoad(object):
 
         return scale_factors, out
 
-    @staticmethod
-    def get_number(regex: str, filename: str) -> float:
-        '''
-        Get the number out of the filename using regex
-        '''
-        r = re.compile( regex )
-
-        out = r.findall(filename)
-        
-        assert len(out) == 1
-        del r
-
-        return float(out[0])
-
-    @staticmethod
-    def read_array(filename: str) -> np.ndarray:
-        out = np.loadtxt(filename)
-        return out
-
-    @staticmethod
-    def read_strings(filename: str) -> str:
-        with open(filename, 'r') as f:
-            out = f.read()
-        
-        return out
-
-class PowerSpec(GadgetLoad):
-    '''
-    A class to generate a matrix of powerspec(k, z),
-    with the corresponding SimultionICs.json file.
-    '''
-    def __init__(self):
-        raise NotImplementedError
-
 class MultiPowerSpec(object):
     '''
     A class to generate a single HDF5 file from powerspecs
     of multiple simulations.
+
+    Parameters:
+    ----
+    all_submission_dirs (list) : a list of paths to the simulation folders
+    Latin_file (str)           : a path to the Latin hypercube json file
+
+    Output File:
+    ----
+    **LatinDict
+    mpgadget_1
+        - powerspecs
+        - scale_factors
+        - camb_matter
+        - camb_redshifts
+        - **param_dict
+    mpgadet_2
+    ...    
     '''
-    def __init__(self):
-        raise NotImplementedError
+    def __init__(self, all_submission_dirs: List[str]) -> None:
+        self.all_submission_dirs = all_submission_dirs        
 
 def take_params_dict(Latin_dict: dict) -> Generator:
     '''
