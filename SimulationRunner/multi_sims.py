@@ -315,12 +315,11 @@ class MultiPowerSpec(object):
 
         # make each list to be ndarrays
         for key,val in out.items():
-            # you need special treatment to handle list of strs in hdf5
-            if key is "parameter_names":
-                out["parameter_names"] = np.array(
-                    val, dtype=h5py.string_dtype(encoding='utf-8'))
-            else:
-                out[key] = np.array(val)
+            out[key] = np.array(val)
+
+        # you need special treatment to handle list of strs in hdf5        
+        out["parameter_names"] = np.array(out["parameter_names"],
+            dtype=h5py.string_dtype(encoding='utf-8'))
 
         return out
 
