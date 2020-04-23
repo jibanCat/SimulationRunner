@@ -24,7 +24,7 @@ def test_lowRes(base_dir : str = "data/lowRes/") -> None:
     Test dm-only test lowRes: 64^3 parts
     '''
     # lowRes : 64^3 particles and 256 Mpc/h
-    res = 64
+    res = 128
     box = 256
 
     # Latin Hyper Cube sampling
