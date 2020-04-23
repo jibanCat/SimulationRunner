@@ -57,13 +57,13 @@ def test_create_hdf5(all_submission_dirs: List[str], Latin_json: str) -> None:
 
     with h5py.File("test_dmonly.hdf5", "r") as test_hdf5:
         # test the first simulation
-        assert "simulation_1" in test_hdf5
-        assert "simulation_1/powerspecs" in test_hdf5
+        assert "simulation_0" in test_hdf5
+        assert "simulation_0/powerspecs" in test_hdf5
         
-        redend = test_hdf5["simulation_1"].attrs["redend"]
+        redend = test_hdf5["simulation_0"].attrs["redend"]
         scale  = 1 / (redend + 1)
         
-        sim = test_hdf5["simulation_1"]
+        sim = test_hdf5["simulation_0"]
         assert np.abs(scale - sim["scale_factors"][-1]) < 1e-6
 
         # test the sampling size is correct
@@ -74,7 +74,7 @@ def test_create_hdf5(all_submission_dirs: List[str], Latin_json: str) -> None:
 
         # test the ordering of Latin HyperCube is the same as simulation_{}
         hubble1  = test_hdf5["hubble"][0]
-        hubble11 = test_hdf5["simulation_1"].attrs["hubble"]
+        hubble11 = test_hdf5["simulation_0"].attrs["hubble"]
 
         assert np.abs(hubble1 - hubble11) < 1e-6
 
