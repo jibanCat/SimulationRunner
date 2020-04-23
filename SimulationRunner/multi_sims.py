@@ -5,7 +5,8 @@ input parameters.
 Class:
 ----
 :GadgetLoad: handle a single Gadget output filenames
-:PowerSpec: a class to generate a single hdf5 catalogue
+:PowerSpec: handle all powerspec files to a big array
+:MultiPowerSpec: a class to generate a single hdf5 catalogue
     for powerspecs in the folder
 '''
 from typing import Generator, List, Union, Tuple
@@ -14,6 +15,7 @@ import os
 import json
 from glob import glob
 import numpy as np
+import h5py
 
 # the function I used to generate dm-only tests outdirs
 # outdir auto generated, since we will have many folders
@@ -284,17 +286,86 @@ class MultiPowerSpec(object):
     Output File:
     ----
     **LatinDict
-    mpgadget_1
+    simulation_1
         - powerspecs
         - scale_factors
         - camb_matter
         - camb_redshifts
         - **param_dict
-    mpgadet_2
+    simulation_2
     ...    
     '''
-    def __init__(self, all_submission_dirs: List[str]) -> None:
-        self.all_submission_dirs = all_submission_dirs        
+    def __init__(self, all_submission_dirs: List[str],
+            Latin_json: str = "Latin.json") -> None:
+        # all the paths you want to load PowerSpecs
+        # note these paths will be discared after loading
+        # will not store in the hdf5 file.
+        self.all_submission_dirs = all_submission_dirs
+        self.Latin_json          = Latin_json
+
+        # load Latin HyperCube sampling into memory
+        self.Latin_dict = self.load_Latin(self.Latin_json)
+
+    @staticmethod
+    def load_Latin(Latin_json: str) -> dict:
+        with open(Latin_json, 'r') as f:
+            out = json.load(f)
+
+        # make each list to be ndarrays
+        for key,val in out.items():
+            out[key] = np.array(val)
+
+        return out
+
+    def create_hdf5(self, hdf5_name: str = "MutliPowerSpecs.hdf5") -> None:
+        '''
+        - Create a HDF5 file for powerspecs from multiple simulations.
+        - Each simulation stored in subgroup, includeing powerspecs and
+        camb linear power specs.
+        - Each subgroup has their own simulation parameters extracted from
+        SimulationICs.json to reproduce this simulation.
+        - Parameters from Latin HyperCube sampling stored in upper group level,
+        the order of the sampling is the same as the order of simulations.
+
+        TODO: add a method to append new simulations to a created hdf5.
+        '''
+        # open a hdf5 file to store simulations
+        with h5py.File(hdf5_name, 'w') as f:
+            # store the sampling from Latin Hyper cube dict into datasets:
+            # since the sampling size should be arbitrary, we should use
+            # datasets instead of attrs to stores these sampling arrays
+            for key,val in self.Latin_dict.items():
+                f.create_dataset(key, data=val)
+
+            # using generator to iterate through simulations,
+            # PowerSpec stores big arrays so we don't want to load
+            # everything to memory
+            for i,ps in enumerate(
+                    self.load_PowerSpecs(self.all_submission_dirs)):
+                sim = f.create_group( "simulation_{}".format(i) )
+                
+                # store arrays to sim subgroup
+                sim.create_dataset("scale_factors",
+                    data=np.array(ps.scale_factors))
+                sim.create_dataset("powerspecs",
+                    data=ps.powerspecs)
+                
+                sim.create_dataset("camb_redshifts",
+                    data=np.array(ps.camb_redshifts))
+                sim.create_dataset("camb_matters",
+                    data=ps.camb_matters)
+                
+                # stores param json to metadata attrs
+                for key,val in ps.param_dict.items():
+                    sim.attrs[key] = val            
+
+    @staticmethod
+    def load_PowerSpecs(all_submission_dirs: List[str]) -> Generator:
+        '''
+        Iteratively load the PowerSpec class
+        '''
+        for submission_dir in all_submission_dirs:
+            yield PowerSpec(submission_dir)
 
 def take_params_dict(Latin_dict: dict) -> Generator:
     '''
